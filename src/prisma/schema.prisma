@@ -1,0 +1,231 @@
+// This is your Prisma schema file
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  MERCHANT
+  DRIVER
+  OPERATIONS
+}
+
+enum ShipmentStatus {
+  NEW
+  IN_RECEIPT
+  IN_WAREHOUSE
+  WITH_DRIVER
+  DELIVERED
+  DELIVERY_FAILED
+  RETURNED
+  PARTIAL_RETURNED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  password      String
+  name          String
+  phone         String
+  role          UserRole
+  isActive      Boolean  @default(true)
+  avatar        String?
+  
+  // Merchant specific
+  companyName   String?
+  commissionRate Float?  @default(0)
+  
+  // Driver specific
+  vehicleNumber String?
+  licenseNumber String?
+  currentLat    Float?
+  currentLng    Float?
+  isAvailable   Boolean  @default(true)
+  
+  // Relations
+  shipmentsCreated Shipment[] @relation("MerchantShipments")
+  shipmentsDelivered Shipment[] @relation("DriverShipments")
+  transactions  Transaction[]
+  notifications Notification[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([email])
+  @@index([role])
+}
+
+model Shipment {
+  id              String   @id @default(cuid())
+  trackingNumber  String   @unique
+  barcode         String   @unique
+  
+  // Customer Information
+  customerName    String
+  customerPhone   String
+  customerAddress String
+  customerCity    String
+  customerZone    String
+  
+  // Shipment Details
+  description     String
+  weight          Float?
+  dimensions      String?
+  
+  // Pricing
+  declaredValue   Float
+  shippingCost    Float
+  codAmount       Float    @default(0) // Cash on Delivery
+  
+  // Status
+  status          ShipmentStatus @default(NEW)
+  notes           String?
+  
+  // Relations
+  merchantId      String
+  merchant        User     @relation("MerchantShipments", fields: [merchantId], references: [id])
+  
+  driverId        String?
+  driver          User?    @relation("DriverShipments", fields: [driverId], references: [id])
+  
+  warehouseId     String?
+  warehouse       Warehouse? @relation(fields: [warehouseId], references: [id])
+  
+  statusHistory   ShipmentHistory[]
+  transactions    Transaction[]
+  
+  // Timestamps
+  pickupDate      DateTime?
+  deliveryDate    DateTime?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([trackingNumber])
+  @@index([merchantId])
+  @@index([driverId])
+  @@index([status])
+  @@index([customerCity])
+}
+
+model ShipmentHistory {
+  id          String   @id @default(cuid())
+  
+  shipmentId  String
+  shipment    Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  
+  status      ShipmentStatus
+  notes       String?
+  location    String?
+  
+  // Location tracking
+  latitude    Float?
+  longitude   Float?
+  
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  
+  @@index([shipmentId])
+}
+
+model Warehouse {
+  id          String   @id @default(cuid())
+  name        String
+  code        String   @unique
+  address     String
+  city        String
+  
+  // Location
+  latitude    Float
+  longitude   Float
+  
+  // Capacity
+  capacity    Int      @default(1000)
+  currentLoad Int      @default(0)
+  
+  isActive    Boolean  @default(true)
+  
+  shipments   Shipment[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([city])
+}
+
+model Transaction {
+  id              String   @id @default(cuid())
+  
+  // References
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  
+  shipmentId      String?
+  shipment        Shipment? @relation(fields: [shipmentId], references: [id])
+  
+  // Transaction Details
+  type            String   // PAYMENT, WITHDRAWAL, COMMISSION, REFUND
+  amount          Float
+  currency        String   @default("EGP")
+  
+  status          PaymentStatus @default(PENDING)
+  
+  description     String?
+  reference       String?
+  
+  // Payment Gateway
+  paymentMethod   String?  // CASH, BANK_TRANSFER, WALLET
+  paymentGatewayRef String?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([shipmentId])
+  @@index([status])
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  title       String
+  titleAr     String?
+  message     String
+  messageAr   String?
+  
+  type        String   // INFO, SUCCESS, WARNING, ERROR
+  
+  isRead      Boolean  @default(false)
+  
+  // Optional link
+  link        String?
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([userId])
+  @@index([isRead])
+}
+
+model SystemSettings {
+  id              String   @id @default(cuid())
+  key             String   @unique
+  value           String
+  description     String?
+  
+  updatedAt       DateTime @updatedAt
+}
