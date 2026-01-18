@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
       availableDrivers,
       earningsResult,
       locationsData,
-      performanceData,
+      // Remove the problematic query and replace with simpler approach
     ] = await Promise.all([
       // Total drivers
       prisma.user.count({
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
         },
       }),
 
-      // Get driver locations (mock for now)
+      // Get driver locations
       prisma.user.findMany({
         where: { 
           role: 'DRIVER',
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
         take: 20,
       }),
 
-      // Performance data
+      // Get driver shipments data separately
       prisma.user.findMany({
         where: { 
           role: 'DRIVER',
@@ -73,48 +73,56 @@ export async function GET(request: NextRequest) {
         select: {
           id: true,
           name: true,
-          _count: {
-            select: {
-              shipmentsDelivered: {
-                where: { status: 'DELIVERED' },
-              },
-              shipmentsDeliveredFailed: {
-                where: { status: { in: ['DELIVERY_FAILED', 'RETURNED'] } },
-              },
-            },
-          },
-          shipmentsDelivered: {
-            take: 50,
-            select: {
-              shippingCost: true,
-            },
-          },
         },
         take: 10,
       }),
     ]);
 
-    // Calculate performance metrics
-    const performance = performanceData.map((driver) => {
-      const totalDeliveries = driver._count.shipmentsDelivered;
-      const failedDeliveries = driver._count.shipmentsDeliveredFailed;
-      const totalShipments = totalDeliveries + failedDeliveries;
-      const successRate = totalShipments > 0 
-        ? Math.round((totalDeliveries / totalShipments) * 100) 
-        : 0;
-      
-      const earnings = driver.shipmentsDelivered.reduce(
-        (sum, shipment) => sum + (shipment.shippingCost || 0),
-        0
-      );
+    // Get performance data for each driver
+    const performance = await Promise.all(
+      locationsData.slice(0, 10).map(async (driver) => {
+        // Get successful deliveries
+        const successfulDeliveries = await prisma.shipment.count({
+          where: {
+            driverId: driver.id,
+            status: 'DELIVERED',
+          },
+        });
 
-      return {
-        id: driver.id,
-        name: driver.name,
-        successRate,
-        earnings,
-      };
-    });
+        // Get failed deliveries
+        const failedDeliveries = await prisma.shipment.count({
+          where: {
+            driverId: driver.id,
+            status: { in: ['DELIVERY_FAILED', 'RETURNED'] },
+          },
+        });
+
+        // Get earnings
+        const earningsResult = await prisma.shipment.aggregate({
+          where: {
+            driverId: driver.id,
+            status: 'DELIVERED',
+          },
+          _sum: {
+            shippingCost: true,
+          },
+        });
+
+        const totalShipments = successfulDeliveries + failedDeliveries;
+        const successRate = totalShipments > 0 
+          ? Math.round((successfulDeliveries / totalShipments) * 100) 
+          : 0;
+      
+        const earnings = earningsResult._sum.shippingCost || 0;
+
+        return {
+          id: driver.id,
+          name: driver.name,
+          successRate,
+          earnings,
+        };
+      })
+    );
 
     return NextResponse.json({
       totalDrivers,
