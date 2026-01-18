@@ -169,6 +169,9 @@ export default function DriverDetailsPage() {
 
   const isRTL = locale === 'ar';
 
+  // تعريف t هنا لاستخدامها في كل مكان
+  const t = (key: string) => getTranslation(locale, key);
+
   useEffect(() => {
     fetchDriver();
   }, [driverId, locale]);
@@ -181,7 +184,7 @@ export default function DriverDetailsPage() {
       const response = await fetch(`/api/admin/drivers/${driverId}`);
       
       if (!response.ok) {
-        throw new Error(getTranslation(locale, 'drivers.fetchError'));
+        throw new Error(t('drivers.fetchError'));
       }
 
       const data = await response.json();
@@ -198,8 +201,6 @@ export default function DriverDetailsPage() {
       setLoading(false);
     }
   };
-
-  const t = (key: string) => getTranslation(locale, key);
 
   if (loading) {
     return (
