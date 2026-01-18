@@ -527,10 +527,7 @@ export default function AdminCustomersPage() {
                           <div className="flex items-center">
                             <div className="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
                               <span className="text-blue-600 font-medium">
-                                {customer.name
-  .split(' ')
-  .map((n: string) => n[0])
-  .join('')}
+                                {customer.name.split(' ')  .map((n: string) => n[0]).join('')}
                               </span>
                             </div>
                             <div className={`${isRTL ? 'mr-4' : 'ml-4'}`}>

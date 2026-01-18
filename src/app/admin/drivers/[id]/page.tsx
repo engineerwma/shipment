@@ -200,20 +200,20 @@ export default function DriverDetailsPage() {
 
   if (loading) {
     return (
-      <DashboardLayout>
+      <>
         <div className="flex items-center justify-center min-h-[60vh]">
           <div className="text-center">
             <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-4" />
             <p className="text-gray-600">{t('common.loading')}</p>
           </div>
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
   if (error || !driver) {
     return (
-      <DashboardLayout>
+      <>
         <div className="space-y-6">
           <div className="flex items-center gap-3">
             <button
@@ -464,6 +464,6 @@ export default function DriverDetailsPage() {
           </div>
         </div>
       </div>
-    </DashboardLayout>
+    </>
   );
 }
