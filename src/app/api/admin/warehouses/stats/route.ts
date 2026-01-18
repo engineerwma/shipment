@@ -61,21 +61,28 @@ export async function GET(request: NextRequest) {
       }),
     ]);
 
-    // Calculate overall utilization
-    const totalUtilization = totalCapacity._sum.capacity && totalCurrentLoad._sum.currentLoad
-      ? Math.round((totalCurrentLoad._sum.currentLoad / totalCapacity._sum.capacity) * 100)
+    // Calculate overall utilization with null checks
+    const capacitySum = totalCapacity._sum.capacity ?? 0;
+    const currentLoadSum = totalCurrentLoad._sum.currentLoad ?? 0;
+    const totalUtilization = capacitySum > 0
+      ? Math.round((currentLoadSum / capacitySum) * 100)
       : 0;
 
-    // Format warehouses by city
-    const formattedCities = warehousesByCity.map((city) => ({
-      city: city.city,
-      count: city._count.id,
-      capacity: city._sum.capacity || 0,
-      currentLoad: city._sum.currentLoad || 0,
-      utilization: city._sum.capacity 
-        ? Math.round((city._sum.currentLoad / city._sum.capacity) * 100)
-        : 0,
-    }));
+    // Format warehouses by city with null checks
+    const formattedCities = warehousesByCity.map((city) => {
+      const cityCapacity = city._sum.capacity ?? 0;
+      const cityCurrentLoad = city._sum.currentLoad ?? 0;
+      
+      return {
+        city: city.city,
+        count: city._count.id,
+        capacity: cityCapacity,
+        currentLoad: cityCurrentLoad,
+        utilization: cityCapacity > 0
+          ? Math.round((cityCurrentLoad / cityCapacity) * 100)
+          : 0,
+      };
+    });
 
     // Format top utilized warehouses
     const formattedTopWarehouses = topUtilizedWarehouses.map((warehouse) => ({
@@ -94,12 +101,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       totalWarehouses,
       activeWarehouses,
-      totalCapacity: totalCapacity._sum.capacity || 0,
-      totalCurrentLoad: totalCurrentLoad._sum.currentLoad || 0,
+      totalCapacity: capacitySum,
+      totalCurrentLoad: currentLoadSum,
       totalUtilization,
       cities: formattedCities,
       topUtilized: formattedTopWarehouses,
-      availableSpace: (totalCapacity._sum.capacity || 0) - (totalCurrentLoad._sum.currentLoad || 0),
+      availableSpace: capacitySum - currentLoadSum,
     });
   } catch (error) {
     console.error('Error fetching warehouse statistics:', error);
