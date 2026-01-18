@@ -165,7 +165,7 @@ export default function DriverDetailsPage() {
   const { locale } = useLocale();
   const router = useRouter();
   const params = useParams();
-  const driverId = params.id as string;
+  const driverId = Array.isArray(params.id) ? params.id[0] : params.id || '';
   
   const [driver, setDriver] = useState<Driver | null>(null);
   const [loading, setLoading] = useState(true);
@@ -175,11 +175,13 @@ export default function DriverDetailsPage() {
 
   useEffect(() => {
     fetchDriver();
-  }, [driverId]);
+  }, [driverId, locale]);
 
   const fetchDriver = async () => {
     try {
       setLoading(true);
+      setError(null);
+      
       const response = await fetch(`/api/admin/drivers/${driverId}`);
       
       if (!response.ok) {
@@ -187,10 +189,15 @@ export default function DriverDetailsPage() {
       }
 
       const data = await response.json();
+      
+      if (!data.driver) {
+        throw new Error('Driver not found');
+      }
+      
       setDriver(data.driver);
     } catch (error: any) {
       console.error('Error fetching driver:', error);
-      setError(error.message);
+      setError(error.message || t('drivers.fetchError'));
     } finally {
       setLoading(false);
     }
@@ -200,12 +207,10 @@ export default function DriverDetailsPage() {
 
   if (loading) {
     return (
-      <div>
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="text-center">
-            <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-4" />
-            <p className="text-gray-600">{t('common.loading')}</p>
-          </div>
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-4" />
+          <p className="text-gray-600">{t('common.loading')}</p>
         </div>
       </div>
     );
@@ -213,7 +218,7 @@ export default function DriverDetailsPage() {
 
   if (error || !driver) {
     return (
-      <div>
+      <div dir={isRTL ? "rtl" : "ltr"}>
         <div className="space-y-6">
           <div className="flex items-center gap-3">
             <button
@@ -237,7 +242,7 @@ export default function DriverDetailsPage() {
   }
 
   return (
-    <div>
+    <div dir={isRTL ? "rtl" : "ltr"}>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
