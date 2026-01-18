@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { verifyToken } from './lib/auth-utils';
+import { verifyToken } from './src/lib/auth-utils';
 
 // Define protected routes and their allowed roles
 const protectedRoutes = {

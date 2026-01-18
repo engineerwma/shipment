@@ -14,6 +14,10 @@ import {
   MapPin,
   Plus,
   FileText,
+  RefreshCw,
+  TrendingUp,
+  TrendingDown,
+  Warehouse,
 } from 'lucide-react';
 import DashboardLayout from '@/components/Layout/DashboardLayout';
 import { useLocale } from '../../../app/contexts/LocaleContext';
@@ -50,14 +54,29 @@ const getTranslation = (locale: 'en' | 'ar', key: string): string => {
         addDriver: 'Add Driver',
         generateReport: 'Generate Report',
         systemAlerts: 'System Alerts',
-        shipmentsDelayed: '3 shipments delayed',
+        shipmentsDelayed: 'Shipments Delayed',
         checkDispatch: 'Check dispatch schedule',
-        warehouseCapacity: 'Warehouse 85% capacity',
+        warehouseCapacity: 'Warehouse Capacity',
         considerRedistribution: 'Consider redistribution',
         revenue: 'Revenue',
         pending: 'Pending',
         deliveredToday: 'Delivered Today',
         returns: 'Returns',
+        totalShipments: 'Total Shipments',
+        activeDrivers: 'Active Drivers',
+        totalMerchants: 'Total Merchants',
+        activeWarehouses: 'Active Warehouses',
+        refresh: 'Refresh',
+        loading: 'Loading...',
+        noData: 'No data available',
+        warehouseAlerts: 'Warehouse Alerts',
+        driverAlerts: 'Driver Alerts',
+        highUtilization: 'High Utilization',
+        unavailableDrivers: 'Unavailable Drivers',
+        viewDetails: 'View Details',
+        today: 'Today',
+        thisMonth: 'This Month',
+        lastUpdated: 'Last updated',
       },
     },
     ar: {
@@ -89,14 +108,29 @@ const getTranslation = (locale: 'en' | 'ar', key: string): string => {
         addDriver: 'إضافة مندوب',
         generateReport: 'إنشاء تقرير',
         systemAlerts: 'تنبيهات النظام',
-        shipmentsDelayed: '3 شحنات متأخرة',
+        shipmentsDelayed: 'شحنات متأخرة',
         checkDispatch: 'تحقق من جدول التوزيع',
-        warehouseCapacity: 'المستودع 85% من السعة',
+        warehouseCapacity: 'سعة المستودع',
         considerRedistribution: 'فكر في إعادة التوزيع',
         revenue: 'الإيرادات',
         pending: 'معلق',
         deliveredToday: 'تم التسليم اليوم',
         returns: 'المرتجعات',
+        totalShipments: 'إجمالي الشحنات',
+        activeDrivers: 'السائقين النشطين',
+        totalMerchants: 'إجمالي التجار',
+        activeWarehouses: 'المستودعات النشطة',
+        refresh: 'تحديث',
+        loading: 'جاري التحميل...',
+        noData: 'لا توجد بيانات',
+        warehouseAlerts: 'تنبيهات المستودعات',
+        driverAlerts: 'تنبيهات السائقين',
+        highUtilization: 'استخدام مرتفع',
+        unavailableDrivers: 'سائقين غير متاحين',
+        viewDetails: 'عرض التفاصيل',
+        today: 'اليوم',
+        thisMonth: 'هذا الشهر',
+        lastUpdated: 'آخر تحديث',
       },
     },
   };
@@ -111,10 +145,67 @@ const getTranslation = (locale: 'en' | 'ar', key: string): string => {
   return value || key;
 };
 
+// Types for our data
+interface DashboardStats {
+  totalShipments: number;
+  activeDrivers: number;
+  totalMerchants: number;
+  warehouses: number;
+  revenue: number;
+  pendingShipments: number;
+  deliveredToday: number;
+  returns: number;
+}
+
+interface Shipment {
+  id: string;
+  trackingNumber: string;
+  customerName: string;
+  customerCity: string;
+  customerPhone?: string;
+  status: string;
+  shippingCost: number;
+  codAmount: number;
+  createdAt: string;
+  merchant?: {
+    id: string;
+    name: string;
+    companyName?: string;
+  };
+  driver?: {
+    id: string;
+    name: string;
+    vehicleNumber?: string;
+  };
+  warehouse?: {
+    id: string;
+    name: string;
+    code?: string;
+  };
+}
+
+interface WarehouseAlert {
+  id: string;
+  name: string;
+  code: string;
+  utilization: number;
+  city: string;
+  status: 'critical' | 'warning' | 'good';
+}
+
+interface DriverAlert {
+  id: string;
+  name: string;
+  vehicleNumber?: string;
+  isAvailable: boolean;
+  todayDeliveries: number;
+  todayEarnings: number;
+}
+
 export default function AdminDashboardPage() {
   const { locale } = useLocale();
   const router = useRouter();
-  const [stats, setStats] = useState({
+  const [stats, setStats] = useState<DashboardStats>({
     totalShipments: 0,
     activeDrivers: 0,
     totalMerchants: 0,
@@ -124,106 +215,76 @@ export default function AdminDashboardPage() {
     deliveredToday: 0,
     returns: 0,
   });
-  const [recentShipments, setRecentShipments] = useState<any[]>([]);
+  const [recentShipments, setRecentShipments] = useState<Shipment[]>([]);
+  const [warehouseAlerts, setWarehouseAlerts] = useState<WarehouseAlert[]>([]);
+  const [driverAlerts, setDriverAlerts] = useState<DriverAlert[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<string>('');
 
   const isRTL = locale === 'ar';
 
   useEffect(() => {
     fetchDashboardData();
+    // Refresh every 5 minutes
+    const interval = setInterval(() => {
+      fetchDashboardData();
+    }, 5 * 60 * 1000);
+    
+    return () => clearInterval(interval);
   }, []);
 
   const fetchDashboardData = async () => {
     try {
-      // Fetch real data from API
-      const [statsRes, shipmentsRes] = await Promise.all([
+      setRefreshing(true);
+      
+      // Fetch all data in parallel
+      const [statsRes, shipmentsRes, warehouseStatsRes, driverStatsRes] = await Promise.all([
         fetch('/api/admin/dashboard/stats'),
         fetch('/api/admin/dashboard/recent-shipments'),
+        fetch('/api/admin/dashboard/warehouse-stats'),
+        fetch('/api/admin/dashboard/driver-stats'),
       ]);
 
+      // Process stats
       if (statsRes.ok) {
         const statsData = await statsRes.json();
         setStats(statsData);
       } else {
-        // Fallback to mock data if API fails
-        const mockStats = {
-          totalShipments: 156,
-          activeDrivers: 8,
-          totalMerchants: 24,
-          warehouses: 3,
-          revenue: 12500,
-          pendingShipments: 42,
-          deliveredToday: 38,
-          returns: 12,
-        };
-        setStats(mockStats);
+        console.error('Failed to fetch dashboard stats');
       }
 
+      // Process recent shipments
       if (shipmentsRes.ok) {
         const shipmentsData = await shipmentsRes.json();
         setRecentShipments(shipmentsData.shipments || []);
       } else {
-        // Fallback to mock data if API fails
-        const mockShipments = [
-          {
-            id: '1',
-            trackingNumber: 'TRK0012345',
-            customerName: 'Ahmed Mohamed',
-            customerCity: 'Cairo',
-            status: 'DELIVERED',
-            shippingCost: 150,
-          },
-          {
-            id: '2',
-            trackingNumber: 'TRK0012346',
-            customerName: 'Sara Ali',
-            customerCity: 'Alexandria',
-            status: 'WITH_DRIVER',
-            shippingCost: 120,
-          },
-          {
-            id: '3',
-            trackingNumber: 'TRK0012347',
-            customerName: 'Omar Hassan',
-            customerCity: 'Giza',
-            status: 'IN_WAREHOUSE',
-            shippingCost: 90,
-          },
-          {
-            id: '4',
-            trackingNumber: 'TRK0012348',
-            customerName: 'Fatima Mahmoud',
-            customerCity: 'Cairo',
-            status: 'NEW',
-            shippingCost: 110,
-          },
-          {
-            id: '5',
-            trackingNumber: 'TRK0012349',
-            customerName: 'Khalid Ahmed',
-            customerCity: 'Alexandria',
-            status: 'DELIVERED',
-            shippingCost: 85,
-          },
-        ];
-        setRecentShipments(mockShipments);
+        console.error('Failed to fetch recent shipments');
       }
+
+      // Process warehouse alerts
+      if (warehouseStatsRes.ok) {
+        const warehouseData = await warehouseStatsRes.json();
+        setWarehouseAlerts(warehouseData.highUtilizationWarehouses || []);
+      } else {
+        console.error('Failed to fetch warehouse stats');
+      }
+
+      // Process driver alerts
+      if (driverStatsRes.ok) {
+        const driverData = await driverStatsRes.json();
+        setDriverAlerts(driverData.drivers || []);
+      } else {
+        console.error('Failed to fetch driver stats');
+      }
+
+      // Update last updated time
+      setLastUpdated(new Date().toLocaleTimeString());
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
-      // Use mock data on error
-      const mockStats = {
-        totalShipments: 156,
-        activeDrivers: 8,
-        totalMerchants: 24,
-        warehouses: 3,
-        revenue: 12500,
-        pendingShipments: 42,
-        deliveredToday: 38,
-        returns: 12,
-      };
-      setStats(mockStats);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -235,6 +296,10 @@ export default function AdminDashboardPage() {
     router.push('/admin/drivers/create');
   };
 
+  const handleAddWarehouse = () => {
+    router.push('/admin/warehouses/create');
+  };
+
   const handleGenerateReport = () => {
     router.push('/admin/reports');
   };
@@ -243,38 +308,48 @@ export default function AdminDashboardPage() {
     router.push('/admin/shipments');
   };
 
+  // Calculate percentage changes (mock for now - you can implement real calculations)
+  const calculateChange = (current: number, previous: number = current * 0.9) => {
+    const change = ((current - previous) / previous) * 100;
+    return {
+      value: Math.abs(Math.round(change)),
+      isPositive: change >= 0,
+      icon: change >= 0 ? TrendingUp : TrendingDown,
+    };
+  };
+
   const statCards = [
     {
-      title: getTranslation(locale, 'shipments'),
-      value: stats.totalShipments,
-      change: '+12%',
+      title: getTranslation(locale, 'dashboard.totalShipments'),
+      value: stats.totalShipments.toLocaleString(),
+      change: calculateChange(stats.totalShipments),
       icon: Package,
       color: 'bg-blue-500',
       hoverColor: 'hover:bg-blue-600',
       onClick: () => router.push('/admin/shipments'),
     },
     {
-      title: getTranslation(locale, 'drivers'),
-      value: stats.activeDrivers,
-      change: '+5%',
+      title: getTranslation(locale, 'dashboard.activeDrivers'),
+      value: stats.activeDrivers.toLocaleString(),
+      change: calculateChange(stats.activeDrivers),
       icon: Truck,
       color: 'bg-green-500',
       hoverColor: 'hover:bg-green-600',
-      onClick: () => router.push('/admin/drivers'),
+      onClick: () => router.push('/admin/drivers?status=active'),
     },
     {
-      title: getTranslation(locale, 'merchants'),
-      value: stats.totalMerchants,
-      change: '+8%',
+      title: getTranslation(locale, 'dashboard.totalMerchants'),
+      value: stats.totalMerchants.toLocaleString(),
+      change: calculateChange(stats.totalMerchants),
       icon: Users,
       color: 'bg-purple-500',
       hoverColor: 'hover:bg-purple-600',
       onClick: () => router.push('/admin/merchants'),
     },
     {
-      title: getTranslation(locale, 'warehouses'),
-      value: stats.warehouses,
-      change: '+2%',
+      title: getTranslation(locale, 'dashboard.activeWarehouses'),
+      value: stats.warehouses.toLocaleString(),
+      change: calculateChange(stats.warehouses),
       icon: Building,
       color: 'bg-orange-500',
       hoverColor: 'hover:bg-orange-600',
@@ -282,8 +357,9 @@ export default function AdminDashboardPage() {
     },
     {
       title: getTranslation(locale, 'dashboard.revenue'),
-      value: `$${stats.revenue.toLocaleString()}`,
-      change: '+15%',
+      value: `EGP ${stats.revenue.toLocaleString()}`,
+      subtitle: getTranslation(locale, 'dashboard.thisMonth'),
+      change: calculateChange(stats.revenue),
       icon: DollarSign,
       color: 'bg-teal-500',
       hoverColor: 'hover:bg-teal-600',
@@ -291,29 +367,32 @@ export default function AdminDashboardPage() {
     },
     {
       title: getTranslation(locale, 'dashboard.pending'),
-      value: stats.pendingShipments,
-      change: '-3%',
+      value: stats.pendingShipments.toLocaleString(),
+      change: calculateChange(stats.pendingShipments),
       icon: Clock,
       color: 'bg-yellow-500',
       hoverColor: 'hover:bg-yellow-600',
-      onClick: () => router.push('/admin/shipments?status=PENDING'),
+      onClick: () => router.push('/admin/shipments?status=pending'),
     },
   ];
 
   const additionalStats = [
     {
       title: getTranslation(locale, 'dashboard.deliveredToday'),
-      value: stats.deliveredToday,
+      value: stats.deliveredToday.toLocaleString(),
+      subtitle: getTranslation(locale, 'dashboard.today'),
       icon: CheckCircle,
       color: 'text-green-600',
       bgColor: 'bg-green-50',
+      onClick: () => router.push('/admin/shipments?status=DELIVERED&today=true'),
     },
     {
       title: getTranslation(locale, 'dashboard.returns'),
-      value: stats.returns,
+      value: stats.returns.toLocaleString(),
       icon: AlertCircle,
       color: 'text-red-600',
       bgColor: 'bg-red-50',
+      onClick: () => router.push('/admin/shipments?status=RETURNED'),
     },
   ];
 
@@ -328,71 +407,85 @@ export default function AdminDashboardPage() {
     PARTIAL_RETURNED: AlertCircle,
   };
 
+  // Get unavailable drivers count
+  const unavailableDriversCount = driverAlerts.filter(driver => !driver.isAvailable).length;
+
   return (
-    <DashboardLayout>
+    <>
       <div className="space-y-6">
-        {/* Welcome header */}
+        {/* Welcome header with refresh button */}
         <div className="bg-gradient-to-r from-blue-600 to-cyan-600 rounded-xl p-6 text-white">
-          <h1 className="text-2xl font-bold mb-2">
-            {getTranslation(locale, 'dashboard.welcome')}
-          </h1>
-          <p className="opacity-90">
-            {getTranslation(locale, 'dashboard.welcomeMessage')}
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold mb-2">
+                {getTranslation(locale, 'dashboard.welcome')}
+              </h1>
+              <p className="opacity-90">
+                {getTranslation(locale, 'dashboard.welcomeMessage')}
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              {lastUpdated && (
+                <span className="text-sm opacity-75">
+                  {getTranslation(locale, 'dashboard.lastUpdated')}: {lastUpdated}
+                </span>
+              )}
+              <button
+                onClick={fetchDashboardData}
+                disabled={refreshing}
+                className="p-2 bg-white/20 rounded-lg hover:bg-white/30 transition-colors disabled:opacity-50"
+                title={getTranslation(locale, 'dashboard.refresh')}
+              >
+                <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Stats grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {statCards.slice(0, 4).map((stat, index) => (
-            <div
-              key={index}
-              className="bg-white rounded-xl shadow-md p-6 border hover:shadow-lg transition-shadow cursor-pointer"
-              onClick={stat.onClick}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className={`p-3 rounded-lg ${stat.color} ${stat.hoverColor} transition-colors`}>
-                  <stat.icon className="w-6 h-6 text-white" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {statCards.map((stat, index) => {
+            const ChangeIcon = stat.change.icon;
+            return (
+              <div
+                key={index}
+                className="bg-white rounded-xl shadow-md p-6 border hover:shadow-lg transition-shadow cursor-pointer"
+                onClick={stat.onClick}
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <div className={`p-3 rounded-lg ${stat.color} ${stat.hoverColor} transition-colors`}>
+                    <stat.icon className="w-6 h-6 text-white" />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <ChangeIcon className={`w-4 h-4 ${
+                      stat.change.isPositive ? 'text-green-600' : 'text-red-600'
+                    }`} />
+                    <span className={`text-sm font-medium ${
+                      stat.change.isPositive ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {stat.change.isPositive ? '+' : '-'}{stat.change.value}%
+                    </span>
+                  </div>
                 </div>
-                <span className="text-sm font-medium text-green-600">
-                  {stat.change}
-                </span>
+                <h3 className="text-2xl font-bold text-gray-800 mb-1">
+                  {stat.value}
+                </h3>
+                <p className="text-gray-600">{stat.title}</p>
+                {stat.subtitle && (
+                  <p className="text-sm text-gray-500 mt-1">{stat.subtitle}</p>
+                )}
               </div>
-              <h3 className="text-2xl font-bold text-gray-800 mb-1">
-                {stat.value}
-              </h3>
-              <p className="text-gray-600">{stat.title}</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
-        {/* Additional stats and revenue */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {statCards.slice(4).map((stat, index) => (
-            <div
-              key={index}
-              className="bg-white rounded-xl shadow-md p-6 border hover:shadow-lg transition-shadow cursor-pointer"
-              onClick={stat.onClick}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className={`p-3 rounded-lg ${stat.color} ${stat.hoverColor} transition-colors`}>
-                  <stat.icon className="w-6 h-6 text-white" />
-                </div>
-                <span className="text-sm font-medium text-green-600">
-                  {stat.change}
-                </span>
-              </div>
-              <h3 className="text-2xl font-bold text-gray-800 mb-1">
-                {stat.value}
-              </h3>
-              <p className="text-gray-600">{stat.title}</p>
-            </div>
-          ))}
-          
-          {/* Additional stats */}
+        {/* Additional stats */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {additionalStats.map((stat, index) => (
             <div
               key={index}
-              className="bg-white rounded-xl shadow-md p-6 border"
+              className="bg-white rounded-xl shadow-md p-6 border hover:shadow-lg transition-shadow cursor-pointer"
+              onClick={stat.onClick}
             >
               <div className="flex items-center justify-between mb-4">
                 <div className={`p-3 rounded-lg ${stat.bgColor}`}>
@@ -403,11 +496,14 @@ export default function AdminDashboardPage() {
                 {stat.value}
               </h3>
               <p className="text-gray-600">{stat.title}</p>
+              {stat.subtitle && (
+                <p className="text-sm text-gray-500 mt-1">{stat.subtitle}</p>
+              )}
             </div>
           ))}
         </div>
 
-        {/* Recent shipments and quick actions */}
+        {/* Recent shipments and alerts */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Recent shipments */}
           <div className="lg:col-span-2 bg-white rounded-xl shadow-md p-6 border">
@@ -427,12 +523,12 @@ export default function AdminDashboardPage() {
             {loading ? (
               <div className="text-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                <p className="mt-2 text-gray-600">Loading shipments...</p>
+                <p className="mt-2 text-gray-600">{getTranslation(locale, 'dashboard.loading')}</p>
               </div>
             ) : recentShipments.length === 0 ? (
               <div className="text-center py-8">
                 <Package className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                <p className="text-gray-600">No shipments found</p>
+                <p className="text-gray-600">{getTranslation(locale, 'dashboard.noData')}</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -454,7 +550,7 @@ export default function AdminDashboardPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {recentShipments.map((shipment) => {
+                    {recentShipments.slice(0, 8).map((shipment) => {
                       const StatusIcon = statusIcons[shipment.status] || Package;
                       return (
                         <tr 
@@ -466,11 +562,15 @@ export default function AdminDashboardPage() {
                             <div className="font-medium text-gray-800">
                               {shipment.trackingNumber}
                             </div>
+                            <div className="text-xs text-gray-500">
+                              {new Date(shipment.createdAt).toLocaleDateString()}
+                            </div>
                           </td>
                           <td className="py-3 px-2">
                             <div className="text-sm">{shipment.customerName}</div>
                             <div className="text-xs text-gray-500">
                               {shipment.customerCity}
+                              {shipment.customerPhone && ` • ${shipment.customerPhone}`}
                             </div>
                           </td>
                           <td className="py-3 px-2">
@@ -482,6 +582,11 @@ export default function AdminDashboardPage() {
                           <td className="py-3 px-2">
                             <div className="font-medium">
                               EGP {shipment.shippingCost}
+                              {shipment.codAmount > 0 && (
+                                <div className="text-xs text-gray-500">
+                                  COD: EGP {shipment.codAmount}
+                                </div>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -530,6 +635,21 @@ export default function AdminDashboardPage() {
                   </div>
                   <Plus className="w-4 h-4 text-gray-400" />
                 </button>
+
+                <button 
+                  onClick={handleAddWarehouse}
+                  className="w-full flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-orange-50 rounded-lg group-hover:bg-orange-100 transition-colors">
+                      <Warehouse className="w-4 h-4 text-orange-600" />
+                    </div>
+                    <span className="text-sm font-medium">
+                      {getTranslation(locale, 'warehouses')}
+                    </span>
+                  </div>
+                  <Plus className="w-4 h-4 text-gray-400" />
+                </button>
                 
                 <button 
                   onClick={handleGenerateReport}
@@ -554,35 +674,104 @@ export default function AdminDashboardPage() {
                 {getTranslation(locale, 'dashboard.systemAlerts')}
               </h2>
               <div className="space-y-4">
-                <div className="flex items-start gap-3 p-3 bg-yellow-50 border border-yellow-100 rounded-lg">
-                  <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-                  <div className="text-sm">
-                    <p className="font-medium text-yellow-800">
-                      {getTranslation(locale, 'dashboard.shipmentsDelayed')}
-                    </p>
-                    <p className="text-yellow-700 mt-1">
-                      {getTranslation(locale, 'dashboard.checkDispatch')}
-                    </p>
+                {/* Warehouse alerts */}
+                {warehouseAlerts.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-700 mb-2">
+                      {getTranslation(locale, 'dashboard.warehouseAlerts')}
+                    </h3>
+                    <div className="space-y-2">
+                      {warehouseAlerts.map((warehouse) => (
+                        <div 
+                          key={warehouse.id}
+                          className="flex items-center justify-between p-2 bg-red-50 border border-red-100 rounded-lg cursor-pointer hover:bg-red-100"
+                          onClick={() => router.push(`/admin/warehouses/${warehouse.id}`)}
+                        >
+                          <div>
+                            <p className="text-sm font-medium text-red-800">
+                              {warehouse.name} ({warehouse.code})
+                            </p>
+                            <p className="text-xs text-red-700">
+                              {getTranslation(locale, 'dashboard.highUtilization')}: {warehouse.utilization}%
+                            </p>
+                          </div>
+                          <AlertCircle className="w-4 h-4 text-red-600" />
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-                
-                <div className="flex items-start gap-3 p-3 bg-blue-50 border border-blue-100 rounded-lg">
-                  <MapPin className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                  <div className="text-sm">
-                    <p className="font-medium text-blue-800">
-                      {getTranslation(locale, 'dashboard.warehouseCapacity')}
-                    </p>
-                    <p className="text-blue-700 mt-1">
-                      {getTranslation(locale, 'dashboard.considerRedistribution')}
-                    </p>
+                )}
+
+                {/* Driver alerts */}
+                {unavailableDriversCount > 0 && (
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-700 mb-2">
+                      {getTranslation(locale, 'dashboard.driverAlerts')}
+                    </h3>
+                    <div 
+                      className="flex items-center justify-between p-3 bg-yellow-50 border border-yellow-100 rounded-lg cursor-pointer hover:bg-yellow-100"
+                      onClick={() => router.push('/admin/drivers?availability=unavailable')}
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-yellow-800">
+                          {getTranslation(locale, 'dashboard.unavailableDrivers')}
+                        </p>
+                        <p className="text-xs text-yellow-700">
+                          {unavailableDriversCount} {getTranslation(locale, 'drivers')} {getTranslation(locale, 'dashboard.today')}
+                        </p>
+                      </div>
+                      <AlertCircle className="w-4 h-4 text-yellow-600" />
+                    </div>
                   </div>
-                </div>
+                )}
+
+                {/* Pending shipments alert */}
+                {stats.pendingShipments > 20 && (
+                  <div className="flex items-start gap-3 p-3 bg-yellow-50 border border-yellow-100 rounded-lg">
+                    <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm">
+                      <p className="font-medium text-yellow-800">
+                        {getTranslation(locale, 'dashboard.shipmentsDelayed')}
+                      </p>
+                      <p className="text-yellow-700 mt-1">
+                        {stats.pendingShipments} {getTranslation(locale, 'dashboard.pending')}. {getTranslation(locale, 'dashboard.checkDispatch')}
+                      </p>
+                      <button 
+                        onClick={() => router.push('/admin/shipments?status=pending')}
+                        className="text-yellow-800 underline text-xs mt-1"
+                      >
+                        {getTranslation(locale, 'dashboard.viewDetails')}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* General warehouse capacity alert */}
+                {warehouseAlerts.length === 0 && stats.warehouses > 0 && (
+                  <div className="flex items-start gap-3 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+                    <MapPin className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm">
+                      <p className="font-medium text-blue-800">
+                        {getTranslation(locale, 'dashboard.warehouseCapacity')}
+                      </p>
+                      <p className="text-blue-700 mt-1">
+                        {getTranslation(locale, 'dashboard.considerRedistribution')}
+                      </p>
+                      <button 
+                        onClick={() => router.push('/admin/warehouses')}
+                        className="text-blue-800 underline text-xs mt-1"
+                      >
+                        {getTranslation(locale, 'dashboard.viewDetails')}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
         </div>
       </div>
-    </DashboardLayout>
+    </>
   );
 }
 

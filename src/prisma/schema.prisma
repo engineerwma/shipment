@@ -147,6 +147,11 @@ model Warehouse {
   address     String
   city        String
   
+  // Contact Information
+  phone       String?
+  email       String?
+  managerName String?
+  
   // Location
   latitude    Float
   longitude   Float
@@ -163,6 +168,7 @@ model Warehouse {
   updatedAt   DateTime @updatedAt
   
   @@index([city])
+  @@index([isActive])
 }
 
 model Transaction {

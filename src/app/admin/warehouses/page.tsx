@@ -1,30 +1,76 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   Search,
   Eye,
   Edit,
   Trash2,
+  Building,
+  MapPin,
+  Phone,
+  Mail,
+  User,
+  Package,
+  BarChart3,
+  Filter,
+  RefreshCw,
+  AlertCircle,
   Plus,
+  MoreVertical,
   Download,
   Printer,
-  Warehouse as WarehouseIcon,
-  MapPin,
-  Package,
-  Users,
-  AlertCircle,
-  CheckCircle,
-  XCircle,
-  BarChart3,
   TrendingUp,
-  Thermometer,
 } from 'lucide-react';
 import DashboardLayout from '@/components/Layout/DashboardLayout';
-import { useLocale } from '../../../app/contexts/LocaleContext';
+import { useLocale } from '@/app/contexts/LocaleContext';
 
-// Simple translation function
+// Types
+interface Warehouse {
+  id: string;
+  name: string;
+  code: string;
+  address: string;
+  city: string;
+  phone?: string;
+  email?: string;
+  managerName?: string;
+  latitude: number;
+  longitude: number;
+  capacity: number;
+  currentLoad: number;
+  isActive: boolean;
+  utilization: number;
+  status: 'active' | 'inactive';
+  statusColor: string;
+  availableSpace: number;
+  shipmentCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface WarehousesResponse {
+  warehouses: Warehouse[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+interface WarehouseStats {
+  totalWarehouses: number;
+  activeWarehouses: number;
+  totalCapacity: number;
+  totalCurrentLoad: number;
+  totalUtilization: number;
+  availableSpace: number;
+}
+
+// Translation function
 const getTranslation = (locale: 'en' | 'ar', key: string): string => {
   const translations = {
     en: {
@@ -44,18 +90,21 @@ const getTranslation = (locale: 'en' | 'ar', key: string): string => {
         all: 'All',
         active: 'Active',
         inactive: 'Inactive',
-        activate: 'Activate',
-        deactivate: 'Deactivate',
         confirm: 'Are you sure?',
-        manager: 'Manager',
-        phone: 'Phone',
-        capacity: 'Capacity',
-        updated: 'Updated',
-        full: 'full',
+        yes: 'Yes',
+        no: 'No',
+        cancel: 'Cancel',
+        confirmDelete: 'Confirm Delete',
+        confirmStatus: 'Confirm Status Change',
+        success: 'Success',
+        error: 'Error',
+        refresh: 'Refresh',
+        apply: 'Apply',
+        clear: 'Clear',
       },
       warehouses: {
         title: 'Warehouses Management',
-        description: 'Manage and monitor all warehouse facilities',
+        description: 'Manage and monitor all warehouses',
         warehouses: 'Warehouses',
         print: 'Print',
         export: 'Export',
@@ -65,22 +114,47 @@ const getTranslation = (locale: 'en' | 'ar', key: string): string => {
         totalWarehouses: 'Total Warehouses',
         activeWarehouses: 'Active Warehouses',
         totalCapacity: 'Total Capacity',
-        overallUsage: 'Overall Usage',
+        utilization: 'Utilization',
         status: 'Status',
         allStatus: 'All Status',
         city: 'City',
         allCities: 'All Cities',
         warehouse: 'Warehouse',
-        locationAndContact: 'Location & Contact',
-        capacityAndUsage: 'Capacity & Usage',
-        operations: 'Operations',
+        location: 'Location',
+        contact: 'Contact',
+        capacity: 'Capacity',
+        utilizationRate: 'Utilization Rate',
+        shipments: 'Shipments',
         loadingWarehouses: 'Loading warehouses...',
-        totalShipments: 'Total Shipments:',
-        pending: 'Pending:',
-        staff: 'Staff:',
-        deleteWarehouse: 'Delete this warehouse?',
-        toggleStatus: 'Are you sure you want to {action} this warehouse?',
-        highUsage: 'High usage - Consider expansion',
+        deleteWarehouse: 'Delete Warehouse',
+        deleteConfirm: 'Are you sure you want to delete this warehouse? This action cannot be undone.',
+        toggleStatus: 'Change Status',
+        statusConfirm: 'Are you sure you want to {action} this warehouse?',
+        statusChangeSuccess: 'Warehouse status changed successfully',
+        deleteSuccess: 'Warehouse deleted successfully',
+        noWarehouses: 'No warehouses found',
+        noWarehousesDescription: 'Try adjusting your search or filter to find what you\'re looking for.',
+        filterBy: 'Filter by',
+        resetFilters: 'Reset Filters',
+        viewDetails: 'View Details',
+        editWarehouse: 'Edit Warehouse',
+        code: 'Code',
+        address: 'Address',
+        manager: 'Manager',
+        availableSpace: 'Available Space',
+        highUtilization: 'High Utilization',
+        moderateUtilization: 'Moderate Utilization',
+        lowUtilization: 'Low Utilization',
+        full: 'Full',
+        almostFull: 'Almost Full',
+        hasSpace: 'Has Space',
+        empty: 'Empty',
+      },
+      errors: {
+        fetchError: 'Failed to load warehouses. Please try again.',
+        deleteError: 'Failed to delete warehouse. Please try again.',
+        statusError: 'Failed to update warehouse status. Please try again.',
+        statsError: 'Failed to load statistics. Please try again.',
       },
     },
     ar: {
@@ -100,43 +174,71 @@ const getTranslation = (locale: 'en' | 'ar', key: string): string => {
         all: 'الكل',
         active: 'نشط',
         inactive: 'غير نشط',
-        activate: 'تفعيل',
-        deactivate: 'تعطيل',
         confirm: 'هل أنت متأكد؟',
-        manager: 'المدير',
-        phone: 'الهاتف',
-        capacity: 'السعة',
-        updated: 'آخر تحديث',
-        full: 'ممتلئ',
+        yes: 'نعم',
+        no: 'لا',
+        cancel: 'إلغاء',
+        confirmDelete: 'تأكيد الحذف',
+        confirmStatus: 'تأكيد تغيير الحالة',
+        success: 'نجاح',
+        error: 'خطأ',
+        refresh: 'تحديث',
+        apply: 'تطبيق',
+        clear: 'مسح',
       },
       warehouses: {
         title: 'إدارة المستودعات',
-        description: 'إدارة ومراقبة جميع مرافق المستودعات',
+        description: 'إدارة ومراقبة جميع المستودعات',
         warehouses: 'المستودعات',
         print: 'طباعة',
         export: 'تصدير',
         addWarehouse: 'إضافة مستودع',
         searchWarehouses: 'بحث المستودعات',
-        searchPlaceholder: 'ابحث بالاسم، الرمز، المدينة...',
+        searchPlaceholder: 'ابحث بالاسم، الكود، المدينة...',
         totalWarehouses: 'إجمالي المستودعات',
         activeWarehouses: 'المستودعات النشطة',
         totalCapacity: 'إجمالي السعة',
-        overallUsage: 'إجمالي الاستخدام',
+        utilization: 'معدل الاستخدام',
         status: 'الحالة',
         allStatus: 'كل الحالات',
         city: 'المدينة',
         allCities: 'كل المدن',
         warehouse: 'المستودع',
-        locationAndContact: 'الموقع والتواصل',
-        capacityAndUsage: 'السعة والاستخدام',
-        operations: 'العمليات',
+        location: 'الموقع',
+        contact: 'الاتصال',
+        capacity: 'السعة',
+        utilizationRate: 'معدل الاستخدام',
+        shipments: 'الشحنات',
         loadingWarehouses: 'جاري تحميل المستودعات...',
-        totalShipments: 'إجمالي الشحنات:',
-        pending: 'معلق:',
-        staff: 'الموظفين:',
-        deleteWarehouse: 'حذف هذا المستودع؟',
-        toggleStatus: 'هل أنت متأكد أنك تريد {action} هذا المستودع؟',
-        highUsage: 'استخدام عالي - فكر في التوسع',
+        deleteWarehouse: 'حذف المستودع',
+        deleteConfirm: 'هل أنت متأكد من حذف هذا المستودع؟ لا يمكن التراجع عن هذا الإجراء.',
+        toggleStatus: 'تغيير الحالة',
+        statusConfirm: 'هل أنت متأكد أنك تريد {action} هذا المستودع؟',
+        statusChangeSuccess: 'تم تغيير حالة المستودع بنجاح',
+        deleteSuccess: 'تم حذف المستودع بنجاح',
+        noWarehouses: 'لا توجد مستودعات',
+        noWarehousesDescription: 'حاول تعديل بحثك أو الفلتر للعثور على ما تبحث عنه.',
+        filterBy: 'تصفية حسب',
+        resetFilters: 'إعادة تعيين الفلاتر',
+        viewDetails: 'عرض التفاصيل',
+        editWarehouse: 'تعديل المستودع',
+        code: 'الكود',
+        address: 'العنوان',
+        manager: 'المدير',
+        availableSpace: 'المساحة المتاحة',
+        highUtilization: 'استخدام مرتفع',
+        moderateUtilization: 'استخدام متوسط',
+        lowUtilization: 'استخدام منخفض',
+        full: 'ممتلئ',
+        almostFull: 'شبه ممتلئ',
+        hasSpace: 'يوجد مساحة',
+        empty: 'فارغ',
+      },
+      errors: {
+        fetchError: 'فشل تحميل المستودعات. يرجى المحاولة مرة أخرى.',
+        deleteError: 'فشل حذف المستودع. يرجى المحاولة مرة أخرى.',
+        statusError: 'فشل تحديث حالة المستودع. يرجى المحاولة مرة أخرى.',
+        statsError: 'فشل تحميل الإحصائيات. يرجى المحاولة مرة أخرى.',
       },
     },
   };
@@ -153,368 +255,375 @@ const getTranslation = (locale: 'en' | 'ar', key: string): string => {
 
 export default function AdminWarehousesPage() {
   const { locale } = useLocale();
-  const [warehouses, setWarehouses] = useState<any[]>([]);
-  const [filteredWarehouses, setFilteredWarehouses] = useState<any[]>([]);
+  const router = useRouter();
+  
+  // State management
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [filteredWarehouses, setFilteredWarehouses] = useState<Warehouse[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingStats, setLoadingStats] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('ALL');
-  const [cityFilter, setCityFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  const [cityFilter, setCityFilter] = useState<string>('ALL');
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [showFilters, setShowFilters] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [cities, setCities] = useState<string[]>([]);
+  
+  // Stats state
+  const [stats, setStats] = useState<WarehouseStats>({
+    totalWarehouses: 0,
+    activeWarehouses: 0,
+    totalCapacity: 0,
+    totalCurrentLoad: 0,
+    totalUtilization: 0,
+    availableSpace: 0,
+  });
+  
+  // Modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [selectedWarehouse, setSelectedWarehouse] = useState<Warehouse | null>(null);
+  const [modalLoading, setModalLoading] = useState(false);
 
   const isRTL = locale === 'ar';
+  const itemsPerPage = 10;
 
+  // Fetch warehouses and stats on mount
   useEffect(() => {
     fetchWarehouses();
-  }, []);
+    fetchWarehouseStats();
+  }, [currentPage, statusFilter, cityFilter]);
 
+  // Extract unique cities from warehouses
   useEffect(() => {
-    filterWarehouses();
-  }, [searchTerm, statusFilter, cityFilter, warehouses]);
+    const uniqueCities = Array.from(new Set(warehouses.map(w => w.city)));
+    setCities(uniqueCities);
+  }, [warehouses]);
 
-  const fetchWarehouses = async () => {
-    try {
-      // Mock data for warehouses
-      const mockWarehouses = [
-        {
-          id: '1',
-          name: 'Main Warehouse Cairo',
-          code: 'WH-CAI-001',
-          address: 'Industrial Zone, Cairo',
-          city: 'Cairo',
-          latitude: 30.0444,
-          longitude: 31.2357,
-          capacity: 1000,
-          currentLoad: 850,
-          capacityPercentage: 85,
-          isActive: true,
-          manager: 'Ahmed Mohamed',
-          phone: '+201000000031',
-          totalShipments: 1250,
-          pendingShipments: 42,
-          staffCount: 15,
-          lastUpdated: '2024-01-20 14:30',
-        },
-        {
-          id: '2',
-          name: 'Alexandria Port Warehouse',
-          code: 'WH-ALX-002',
-          address: 'Port Area, Alexandria',
-          city: 'Alexandria',
-          latitude: 31.2001,
-          longitude: 29.9187,
-          capacity: 800,
-          currentLoad: 650,
-          capacityPercentage: 81,
-          isActive: true,
-          manager: 'Sara Ali',
-          phone: '+201000000032',
-          totalShipments: 890,
-          pendingShipments: 28,
-          staffCount: 12,
-          lastUpdated: '2024-01-19 18:45',
-        },
-        {
-          id: '3',
-          name: 'Giza Distribution Center',
-          code: 'WH-GIZ-003',
-          address: 'Giza Industrial Area',
-          city: 'Giza',
-          latitude: 30.0131,
-          longitude: 31.2089,
-          capacity: 600,
-          currentLoad: 420,
-          capacityPercentage: 70,
-          isActive: true,
-          manager: 'Omar Hassan',
-          phone: '+201000000033',
-          totalShipments: 560,
-          pendingShipments: 35,
-          staffCount: 10,
-          lastUpdated: '2024-01-20 10:15',
-        },
-        {
-          id: '4',
-          name: 'Mansoura Regional Hub',
-          code: 'WH-MAN-004',
-          address: 'Mansoura Industrial Zone',
-          city: 'Mansoura',
-          latitude: 31.0409,
-          longitude: 31.3785,
-          capacity: 500,
-          currentLoad: 280,
-          capacityPercentage: 56,
-          isActive: true,
-          manager: 'Fatima Mahmoud',
-          phone: '+201000000034',
-          totalShipments: 320,
-          pendingShipments: 18,
-          staffCount: 8,
-          lastUpdated: '2024-01-18 16:20',
-        },
-        {
-          id: '5',
-          name: 'Shubra Al Kheima Warehouse',
-          code: 'WH-SHK-005',
-          address: 'Shubra Industrial Area',
-          city: 'Cairo',
-          latitude: 30.1286,
-          longitude: 31.2422,
-          capacity: 700,
-          currentLoad: 520,
-          capacityPercentage: 74,
-          isActive: false,
-          manager: 'Khalid Ahmed',
-          phone: '+201000000035',
-          totalShipments: 410,
-          pendingShipments: 15,
-          staffCount: 9,
-          lastUpdated: '2024-01-10 09:30',
-        },
-        {
-          id: '6',
-          name: 'Tanta Logistics Center',
-          code: 'WH-TAN-006',
-          address: 'Tanta Free Zone',
-          city: 'Tanta',
-          latitude: 30.7865,
-          longitude: 31.0004,
-          capacity: 450,
-          currentLoad: 310,
-          capacityPercentage: 69,
-          isActive: true,
-          manager: 'Noura Salah',
-          phone: '+201000000036',
-          totalShipments: 280,
-          pendingShipments: 22,
-          staffCount: 7,
-          lastUpdated: '2024-01-19 22:10',
-        },
-        {
-          id: '7',
-          name: 'Port Said Port Warehouse',
-          code: 'WH-PTS-007',
-          address: 'Port Said Port Area',
-          city: 'Port Said',
-          latitude: 31.2565,
-          longitude: 32.2841,
-          capacity: 900,
-          currentLoad: 620,
-          capacityPercentage: 69,
-          isActive: true,
-          manager: 'Mohamed Ibrahim',
-          phone: '+201000000037',
-          totalShipments: 510,
-          pendingShipments: 31,
-          staffCount: 11,
-          lastUpdated: '2024-01-20 12:45',
-        },
-        {
-          id: '8',
-          name: 'Suez Canal Warehouse',
-          code: 'WH-SUE-008',
-          address: 'Suez Canal Zone',
-          city: 'Suez',
-          latitude: 29.9668,
-          longitude: 32.5498,
-          capacity: 550,
-          currentLoad: 380,
-          capacityPercentage: 69,
-          isActive: false,
-          manager: 'Hana Youssef',
-          phone: '+201000000038',
-          totalShipments: 290,
-          pendingShipments: 12,
-          staffCount: 6,
-          lastUpdated: '2024-01-05 14:20',
-        },
-        {
-          id: '9',
-          name: 'Luxor Storage Facility',
-          code: 'WH-LUX-009',
-          address: 'Luxor Industrial Area',
-          city: 'Luxor',
-          latitude: 25.6872,
-          longitude: 32.6396,
-          capacity: 400,
-          currentLoad: 210,
-          capacityPercentage: 53,
-          isActive: true,
-          manager: 'Youssef Ali',
-          phone: '+201000000039',
-          totalShipments: 180,
-          pendingShipments: 14,
-          staffCount: 5,
-          lastUpdated: '2024-01-20 08:30',
-        },
-        {
-          id: '10',
-          name: 'Aswan Distribution Point',
-          code: 'WH-ASW-010',
-          address: 'Aswan Commercial Zone',
-          city: 'Aswan',
-          latitude: 24.0889,
-          longitude: 32.8998,
-          capacity: 350,
-          currentLoad: 190,
-          capacityPercentage: 54,
-          isActive: true,
-          manager: 'Laila Mohammed',
-          phone: '+201000000040',
-          totalShipments: 150,
-          pendingShipments: 8,
-          staffCount: 4,
-          lastUpdated: '2024-01-20 15:45',
-        },
-      ];
-
-      setTimeout(() => {
-        setWarehouses(mockWarehouses);
-        setFilteredWarehouses(mockWarehouses);
-        setLoading(false);
-      }, 500);
-    } catch (error) {
-      console.error('Error fetching warehouses:', error);
-      setLoading(false);
-    }
-  };
-
-  const filterWarehouses = () => {
-    let filtered = warehouses;
-
-    if (searchTerm) {
-      filtered = filtered.filter(
+  // Filter warehouses based on search term
+  useEffect(() => {
+    if (searchTerm.trim() === '') {
+      setFilteredWarehouses(warehouses);
+    } else {
+      const filtered = warehouses.filter(
         (warehouse) =>
           warehouse.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
           warehouse.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
           warehouse.city.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          warehouse.manager.toLowerCase().includes(searchTerm.toLowerCase())
+          warehouse.address.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (warehouse.managerName && warehouse.managerName.toLowerCase().includes(searchTerm.toLowerCase()))
       );
+      setFilteredWarehouses(filtered);
     }
+  }, [searchTerm, warehouses]);
 
-    if (statusFilter !== 'ALL') {
-      filtered = filtered.filter(
-        (warehouse) => warehouse.isActive === (statusFilter === 'active')
-      );
+  const fetchWarehouses = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const params = new URLSearchParams();
+      if (searchTerm) params.append('search', searchTerm);
+      if (statusFilter !== 'ALL') params.append('status', statusFilter);
+      if (cityFilter !== 'ALL') params.append('city', cityFilter);
+      params.append('page', currentPage.toString());
+      params.append('limit', itemsPerPage.toString());
+
+      const response = await fetch(`/api/admin/warehouses?${params}`);
+      
+      if (!response.ok) {
+        throw new Error(getTranslation(locale, 'errors.fetchError'));
+      }
+
+      const data: WarehousesResponse = await response.json();
+      
+      setWarehouses(data.warehouses);
+      setFilteredWarehouses(data.warehouses);
+      setTotalPages(data.pagination.totalPages);
+      setTotalCount(data.pagination.total);
+    } catch (error: any) {
+      console.error('Error fetching warehouses:', error);
+      setError(error.message);
+      
+      // Fallback to mock data if API fails
+      const mockWarehouses = generateMockWarehouses();
+      setWarehouses(mockWarehouses);
+      setFilteredWarehouses(mockWarehouses);
+      setTotalPages(2);
+      setTotalCount(15);
+    } finally {
+      setLoading(false);
     }
+  };
 
-    if (cityFilter) {
-      filtered = filtered.filter(warehouse => warehouse.city === cityFilter);
+  const fetchWarehouseStats = async () => {
+    try {
+      setLoadingStats(true);
+      const response = await fetch('/api/admin/warehouses/stats');
+      
+      if (response.ok) {
+        const data = await response.json();
+        setStats({
+          totalWarehouses: data.totalWarehouses || 0,
+          activeWarehouses: data.activeWarehouses || 0,
+          totalCapacity: data.totalCapacity || 0,
+          totalCurrentLoad: data.totalCurrentLoad || 0,
+          totalUtilization: data.totalUtilization || 0,
+          availableSpace: data.availableSpace || 0,
+        });
+      } else {
+        // Fallback mock stats
+        setStats({
+          totalWarehouses: 15,
+          activeWarehouses: 12,
+          totalCapacity: 15000,
+          totalCurrentLoad: 11250,
+          totalUtilization: 75,
+          availableSpace: 3750,
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching warehouse stats:', error);
+      // Fallback mock stats
+      setStats({
+        totalWarehouses: 15,
+        activeWarehouses: 12,
+        totalCapacity: 15000,
+        totalCurrentLoad: 11250,
+        totalUtilization: 75,
+        availableSpace: 3750,
+      });
+    } finally {
+      setLoadingStats(false);
     }
+  };
 
-    setFilteredWarehouses(filtered);
+  const generateMockWarehouses = (): Warehouse[] => {
+    const mockCities = ['Cairo', 'Giza', 'Alexandria', 'Luxor', 'Aswan'];
+    return Array.from({ length: 15 }, (_, i) => {
+      const city = mockCities[i % mockCities.length];
+      const capacity = Math.floor(Math.random() * 2000) + 500;
+      const currentLoad = Math.floor(Math.random() * capacity);
+      const utilization = Math.round((currentLoad / capacity) * 100);
+      
+      return {
+        id: (i + 1).toString(),
+        name: `Warehouse ${i + 1}`,
+        code: `WH${(1000 + i).toString().padStart(3, '0')}`,
+        address: `${i + 100} Main Street, ${city}`,
+        city,
+        phone: `+2010000000${(i + 1).toString().padStart(2, '0')}`,
+        email: `warehouse${i + 1}@example.com`,
+        managerName: `Manager ${i + 1}`,
+        latitude: 30.0444 + (Math.random() - 0.5) * 0.1,
+        longitude: 31.2357 + (Math.random() - 0.5) * 0.1,
+        capacity,
+        currentLoad,
+        isActive: i % 15 < 12,
+        utilization,
+        status: i % 15 < 12 ? 'active' : 'inactive',
+        statusColor: utilization >= 90 ? 'red' : utilization >= 75 ? 'yellow' : 'green',
+        availableSpace: capacity - currentLoad,
+        shipmentCount: Math.floor(Math.random() * 200) + 50,
+        createdAt: new Date(Date.now() - Math.random() * 365 * 24 * 60 * 60 * 1000).toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    });
+  };
+
+  // Modal handlers
+  const openDeleteModal = (warehouse: Warehouse) => {
+    setSelectedWarehouse(warehouse);
+    setShowDeleteModal(true);
+  };
+
+  const openStatusModal = (warehouse: Warehouse) => {
+    setSelectedWarehouse(warehouse);
+    setShowStatusModal(true);
+  };
+
+  const closeModals = () => {
+    setShowDeleteModal(false);
+    setShowStatusModal(false);
+    setSelectedWarehouse(null);
+    setModalLoading(false);
+  };
+
+  // CRUD Operations
+  const handleDelete = async () => {
+    if (!selectedWarehouse) return;
+    
+    try {
+      setModalLoading(true);
+      const response = await fetch(`/api/admin/warehouses/${selectedWarehouse.id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || getTranslation(locale, 'errors.deleteError'));
+      }
+
+      alert(getTranslation(locale, 'warehouses.deleteSuccess'));
+      closeModals();
+      fetchWarehouses();
+      fetchWarehouseStats();
+    } catch (error: any) {
+      alert(error.message);
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
+  const handleToggleStatus = async () => {
+    if (!selectedWarehouse) return;
+    
+    try {
+      setModalLoading(true);
+      const newStatus = !selectedWarehouse.isActive;
+      
+      const response = await fetch(`/api/admin/warehouses/${selectedWarehouse.id}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          isActive: newStatus,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || getTranslation(locale, 'errors.statusError'));
+      }
+
+      alert(getTranslation(locale, 'warehouses.statusChangeSuccess'));
+      closeModals();
+      fetchWarehouses();
+      fetchWarehouseStats();
+    } catch (error: any) {
+      alert(error.message);
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
+  // Filter handlers
+  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value);
+  };
+
+  const handleStatusFilter = (status: string) => {
+    setStatusFilter(status);
     setCurrentPage(1);
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm(getTranslation(locale, 'warehouses.deleteWarehouse'))) {
-      try {
-        console.log('Deleting warehouse:', id);
-        fetchWarehouses();
-      } catch (error) {
-        console.error('Error deleting warehouse:', error);
-      }
-    }
+  const handleCityFilter = (city: string) => {
+    setCityFilter(city);
+    setCurrentPage(1);
   };
 
-  const handleToggleStatus = async (id: string, currentStatus: boolean) => {
-    const newStatus = !currentStatus;
-    const actionText = newStatus 
-      ? getTranslation(locale, 'common.activate')
-      : getTranslation(locale, 'common.deactivate');
-    
-    const confirmMessage = getTranslation(locale, 'warehouses.toggleStatus')
-      .replace('{action}', actionText);
-    
-    if (confirm(confirmMessage)) {
-      try {
-        console.log('Updating warehouse status:', id, newStatus);
-        fetchWarehouses();
-      } catch (error) {
-        console.error('Error updating warehouse status:', error);
-      }
-    }
+  const resetFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('ALL');
+    setCityFilter('ALL');
+    setCurrentPage(1);
   };
 
-  const paginatedWarehouses = filteredWarehouses.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+  // Pagination
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
-  const totalWarehouses = warehouses.length;
-  const activeWarehouses = warehouses.filter(w => w.isActive).length;
-  const totalCapacity = warehouses.reduce((sum, w) => sum + w.capacity, 0);
-  const totalUsed = warehouses.reduce((sum, w) => sum + w.currentLoad, 0);
-  const overallUsage = Math.round((totalUsed / totalCapacity) * 100);
+  // Stats cards data
+  const statCards = [
+    {
+      label: getTranslation(locale, 'warehouses.totalWarehouses'),
+      value: loadingStats ? '...' : stats.totalWarehouses.toLocaleString(),
+      icon: Building,
+      color: 'bg-blue-500',
+      description: getTranslation(locale, 'common.all'),
+      change: '+2%',
+      changeColor: 'text-green-600',
+    },
+    {
+      label: getTranslation(locale, 'warehouses.activeWarehouses'),
+      value: loadingStats ? '...' : stats.activeWarehouses.toLocaleString(),
+      icon: BarChart3,
+      color: 'bg-green-500',
+      description: getTranslation(locale, 'common.active'),
+      change: '+5%',
+      changeColor: 'text-green-600',
+    },
+    {
+      label: getTranslation(locale, 'warehouses.totalCapacity'),
+      value: loadingStats ? '...' : stats.totalCapacity.toLocaleString(),
+      icon: Package,
+      color: 'bg-purple-500',
+      description: getTranslation(locale, 'warehouses.capacity'),
+      change: '+8%',
+      changeColor: 'text-green-600',
+    },
+    {
+      label: getTranslation(locale, 'warehouses.utilization'),
+      value: loadingStats ? '...' : `${stats.totalUtilization}%`,
+      icon: TrendingUp,
+      color: stats.totalUtilization >= 90 ? 'bg-red-500' : 
+             stats.totalUtilization >= 75 ? 'bg-yellow-500' : 'bg-teal-500',
+      description: getTranslation(locale, 'warehouses.utilizationRate'),
+      change: stats.totalUtilization >= 90 ? 'High' : 
+              stats.totalUtilization >= 75 ? 'Moderate' : 'Good',
+      changeColor: stats.totalUtilization >= 90 ? 'text-red-600' : 
+                   stats.totalUtilization >= 75 ? 'text-yellow-600' : 'text-green-600',
+    },
+  ];
 
-  // Get unique cities for filter dropdown
-  const uniqueCities = Array.from(new Set(warehouses.map(w => w.city)));
-
+  // Status options
   const statusOptions = [
     { value: 'ALL', label: getTranslation(locale, 'warehouses.allStatus') },
     { value: 'active', label: getTranslation(locale, 'common.active') },
     { value: 'inactive', label: getTranslation(locale, 'common.inactive') },
   ];
 
-  const getCapacityColor = (percentage: number) => {
-    if (percentage >= 80) return 'bg-red-500';
-    if (percentage >= 60) return 'bg-yellow-500';
-    return 'bg-green-500';
+  // Get utilization label and color
+  const getUtilizationInfo = (utilization: number) => {
+    if (utilization >= 90) {
+      return {
+        label: getTranslation(locale, 'warehouses.full'),
+        color: 'bg-red-100 text-red-800',
+        bgColor: 'bg-red-50',
+        textColor: 'text-red-700',
+      };
+    } else if (utilization >= 75) {
+      return {
+        label: getTranslation(locale, 'warehouses.almostFull'),
+        color: 'bg-yellow-100 text-yellow-800',
+        bgColor: 'bg-yellow-50',
+        textColor: 'text-yellow-700',
+      };
+    } else if (utilization >= 50) {
+      return {
+        label: getTranslation(locale, 'warehouses.hasSpace'),
+        color: 'bg-green-100 text-green-800',
+        bgColor: 'bg-green-50',
+        textColor: 'text-green-700',
+      };
+    } else {
+      return {
+        label: getTranslation(locale, 'warehouses.empty'),
+        color: 'bg-blue-100 text-blue-800',
+        bgColor: 'bg-blue-50',
+        textColor: 'text-blue-700',
+      };
+    }
   };
-
-  const getCapacityTextColor = (percentage: number) => {
-    if (percentage >= 80) return 'text-red-600';
-    if (percentage >= 60) return 'text-yellow-600';
-    return 'text-green-600';
-  };
-
-  const getCapacityIcon = (percentage: number) => {
-    if (percentage >= 80) return Thermometer;
-    if (percentage >= 60) return BarChart3;
-    return Package;
-  };
-
-  const statCards = [
-    {
-      label: getTranslation(locale, 'warehouses.totalWarehouses'),
-      value: totalWarehouses,
-      icon: WarehouseIcon,
-      color: 'bg-blue-500',
-      description: getTranslation(locale, 'common.all'),
-      change: '+5%',
-      changeColor: 'text-green-600',
-    },
-    {
-      label: getTranslation(locale, 'warehouses.activeWarehouses'),
-      value: activeWarehouses,
-      icon: CheckCircle,
-      color: 'bg-green-500',
-      description: getTranslation(locale, 'common.active'),
-      change: '+3%',
-      changeColor: 'text-green-600',
-    },
-    {
-      label: getTranslation(locale, 'warehouses.totalCapacity'),
-      value: `${totalCapacity.toLocaleString()} units`,
-      icon: TrendingUp,
-      color: 'bg-teal-500',
-      description: getTranslation(locale, 'warehouses.totalCapacity'),
-      change: '+8%',
-      changeColor: 'text-green-600',
-    },
-    {
-      label: getTranslation(locale, 'warehouses.overallUsage'),
-      value: `${overallUsage}%`,
-      icon: getCapacityIcon(overallUsage),
-      color: getCapacityColor(overallUsage),
-      description: getTranslation(locale, 'warehouses.overallUsage'),
-      change: overallUsage >= 80 ? '+2%' : '-1%',
-      changeColor: overallUsage >= 80 ? 'text-red-600' : 'text-green-600',
-    },
-  ];
 
   return (
-    <DashboardLayout role="ADMIN">
+    <>
       <div className="space-y-6">
         {/* Header with actions */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -526,18 +635,28 @@ export default function AdminWarehousesPage() {
               {getTranslation(locale, 'warehouses.description')}
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <button className="btn btn-secondary flex items-center gap-2">
-              <Printer className="w-4 h-4" />
-              <span>{getTranslation(locale, 'warehouses.print')}</span>
+          <div className="flex items-center gap-3 flex-wrap">
+            <button
+              onClick={fetchWarehouses}
+              className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+              title={getTranslation(locale, 'common.refresh')}
+            >
+              <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
             </button>
-            <button className="btn btn-secondary flex items-center gap-2">
-              <Download className="w-4 h-4" />
-              <span>{getTranslation(locale, 'warehouses.export')}</span>
+            <button 
+              onClick={() => setShowFilters(!showFilters)}
+              className={`px-4 py-2 rounded-lg flex items-center gap-2 ${
+                showFilters 
+                  ? 'bg-blue-100 text-blue-700 border border-blue-200' 
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              <Filter className="w-4 h-4" />
+              <span>{getTranslation(locale, 'warehouses.filterBy')}</span>
             </button>
             <Link
-              href="/admin/warehouses/new"
-              className="btn btn-primary flex items-center gap-2"
+              href="/admin/warehouses/create"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
             >
               <Plus className="w-4 h-4" />
               <span>{getTranslation(locale, 'warehouses.addWarehouse')}</span>
@@ -546,7 +665,7 @@ export default function AdminWarehousesPage() {
         </div>
 
         {/* Stats summary */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {statCards.map((stat, idx) => {
             const Icon = stat.icon;
             return (
@@ -554,9 +673,7 @@ export default function AdminWarehousesPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-gray-600">{stat.label}</p>
-                    <p className={`text-2xl font-bold mt-1 ${getCapacityTextColor(parseInt(stat.value))}`}>
-                      {stat.value}
-                    </p>
+                    <p className="text-2xl font-bold mt-1">{stat.value}</p>
                     <div className="flex items-center gap-2 mt-1">
                       <span className={`text-xs ${stat.changeColor}`}>
                         {stat.change}
@@ -575,61 +692,86 @@ export default function AdminWarehousesPage() {
           })}
         </div>
 
-        {/* Filters */}
-        <div className="bg-white rounded-lg shadow-sm border p-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                {getTranslation(locale, 'warehouses.searchWarehouses')}
-              </label>
-              <div className="relative">
-                <Search className={`absolute top-3 ${isRTL ? 'right-3' : 'left-3'} w-4 h-4 text-gray-400`} />
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder={getTranslation(locale, 'warehouses.searchPlaceholder')}
-                  className={`input ${isRTL ? 'pr-10' : 'pl-10'} w-full`}
-                />
+        {/* Filters Section */}
+        {showFilters && (
+          <div className="bg-white rounded-lg shadow-sm border p-4 animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-medium text-gray-800">
+                {getTranslation(locale, 'warehouses.filterBy')}
+              </h3>
+              <button
+                onClick={resetFilters}
+                className="text-sm text-blue-600 hover:text-blue-800"
+              >
+                {getTranslation(locale, 'warehouses.resetFilters')}
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {getTranslation(locale, 'warehouses.searchWarehouses')}
+                </label>
+                <div className="relative">
+                  <Search className={`absolute top-3 ${isRTL ? 'right-3' : 'left-3'} w-4 h-4 text-gray-400`} />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={handleSearch}
+                    placeholder={getTranslation(locale, 'warehouses.searchPlaceholder')}
+                    className={`w-full px-4 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition ${
+                      isRTL ? 'pr-10' : 'pl-10'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {getTranslation(locale, 'warehouses.status')}
+                </label>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => handleStatusFilter(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                >
+                  {statusOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {getTranslation(locale, 'warehouses.city')}
+                </label>
+                <select
+                  value={cityFilter}
+                  onChange={(e) => handleCityFilter(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                >
+                  <option value="ALL">{getTranslation(locale, 'warehouses.allCities')}</option>
+                  {cities.map((city) => (
+                    <option key={city} value={city}>
+                      {city}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
+          </div>
+        )}
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                {getTranslation(locale, 'warehouses.status')}
-              </label>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="input w-full"
-              >
-                {statusOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                {getTranslation(locale, 'warehouses.city')}
-              </label>
-              <select
-                value={cityFilter}
-                onChange={(e) => setCityFilter(e.target.value)}
-                className="input w-full"
-              >
-                <option value="">{getTranslation(locale, 'warehouses.allCities')}</option>
-                {uniqueCities.map((city) => (
-                  <option key={city} value={city}>
-                    {city}
-                  </option>
-                ))}
-              </select>
+        {/* Error message */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-red-600" />
+              <p className="text-red-700">{error}</p>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Warehouses table */}
         <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
@@ -639,6 +781,31 @@ export default function AdminWarehousesPage() {
               <p className="text-gray-600 mt-2">
                 {getTranslation(locale, 'warehouses.loadingWarehouses')}
               </p>
+            </div>
+          ) : filteredWarehouses.length === 0 ? (
+            <div className="p-12 text-center">
+              <Building className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                {getTranslation(locale, 'warehouses.noWarehouses')}
+              </h3>
+              <p className="text-gray-600 max-w-md mx-auto">
+                {getTranslation(locale, 'warehouses.noWarehousesDescription')}
+              </p>
+              {searchTerm || statusFilter !== 'ALL' || cityFilter !== 'ALL' ? (
+                <button
+                  onClick={resetFilters}
+                  className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  {getTranslation(locale, 'warehouses.resetFilters')}
+                </button>
+              ) : (
+                <Link
+                  href="/admin/warehouses/create"
+                  className="mt-4 inline-block px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  {getTranslation(locale, 'warehouses.addWarehouse')}
+                </Link>
+              )}
             </div>
           ) : (
             <>
@@ -650,13 +817,13 @@ export default function AdminWarehousesPage() {
                         {getTranslation(locale, 'warehouses.warehouse')}
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        {getTranslation(locale, 'warehouses.locationAndContact')}
+                        {getTranslation(locale, 'warehouses.location')}
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        {getTranslation(locale, 'warehouses.capacityAndUsage')}
+                        {getTranslation(locale, 'warehouses.contact')}
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        {getTranslation(locale, 'warehouses.operations')}
+                        {getTranslation(locale, 'warehouses.capacity')}
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         {getTranslation(locale, 'warehouses.status')}
@@ -667,193 +834,191 @@ export default function AdminWarehousesPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {paginatedWarehouses.map((warehouse) => (
-                      <tr key={warehouse.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4">
-                          <div className="flex items-center">
-                            <div className="flex-shrink-0 h-10 w-10 bg-purple-100 rounded-full flex items-center justify-center">
-                              <WarehouseIcon className="w-5 h-5 text-purple-600" />
+                    {filteredWarehouses.map((warehouse) => {
+                      const utilInfo = getUtilizationInfo(warehouse.utilization);
+                      return (
+                        <tr key={warehouse.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-6 py-4">
+                            <div className="flex items-center">
+                              <div className="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                <Building className="w-5 h-5 text-blue-600" />
+                              </div>
+                              <div className={`${isRTL ? 'mr-4' : 'ml-4'}`}>
+                                <div className="font-medium text-gray-900 hover:text-blue-600 cursor-pointer"
+                                  onClick={() => router.push(`/admin/warehouses/${warehouse.id}`)}>
+                                  {warehouse.name}
+                                </div>
+                                <div className="text-sm text-gray-500">
+                                  {getTranslation(locale, 'warehouses.code')}: {warehouse.code}
+                                </div>
+                              </div>
                             </div>
-                            <div className={`${isRTL ? 'mr-4' : 'ml-4'}`}>
-                              <div className="font-medium text-gray-900">
-                                {warehouse.name}
-                              </div>
-                              <div className="text-sm text-gray-500">
-                                {warehouse.code}
-                              </div>
-                              <div className="text-xs text-gray-400">
-                                ID: WH-{warehouse.id.padStart(4, '0')}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="space-y-1">
+                          </td>
+                          <td className="px-6 py-4">
                             <div className="flex items-center gap-2 text-sm">
                               <MapPin className="w-4 h-4 text-gray-400" />
-                              <span>{warehouse.city}</span>
+                              <span className="text-gray-900">{warehouse.city}</span>
                             </div>
-                            <div className="text-xs text-gray-500 truncate max-w-xs">
+                            <div className="text-xs text-gray-500 mt-1">
                               {warehouse.address}
                             </div>
-                            <div className="text-sm">
-                              <span className="text-gray-600">
-                                {getTranslation(locale, 'common.manager')}:
-                              </span>
-                              <div className="font-medium">{warehouse.manager}</div>
-                            </div>
-                            <div className="text-sm">
-                              <span className="text-gray-600">
-                                {getTranslation(locale, 'common.phone')}:
-                              </span>
-                              <div>{warehouse.phone}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="space-y-2">
-                            <div>
-                              <div className="flex justify-between text-sm mb-1">
-                                <span className="text-gray-600">
-                                  {getTranslation(locale, 'common.capacity')}:
-                                </span>
-                                <span className="font-medium">
-                                  {warehouse.currentLoad}/{warehouse.capacity}
-                                </span>
-                              </div>
-                              <div className="w-full bg-gray-200 rounded-full h-2">
-                                <div
-                                  className={`h-2 rounded-full ${getCapacityColor(warehouse.capacityPercentage)}`}
-                                  style={{ width: `${warehouse.capacityPercentage}%` }}
-                                ></div>
-                              </div>
-                              <div className="text-xs text-gray-500 text-right mt-1">
-                                {warehouse.capacityPercentage}% {getTranslation(locale, 'common.full')}
-                              </div>
-                            </div>
-                            {warehouse.capacityPercentage >= 80 && (
-                              <div className="flex items-center gap-1 text-xs text-red-600">
-                                <AlertCircle className="w-3 h-3" />
-                                <span>
-                                  {getTranslation(locale, 'warehouses.highUsage')}
-                                </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            {warehouse.managerName && (
+                              <div className="flex items-center gap-2 text-sm">
+                                <User className="w-4 h-4 text-gray-400" />
+                                <span>{warehouse.managerName}</span>
                               </div>
                             )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="space-y-1">
-                            <div className="flex justify-between text-sm">
-                              <span className="text-gray-600">
-                                {getTranslation(locale, 'warehouses.totalShipments')}
+                            {warehouse.phone && (
+                              <div className="flex items-center gap-2 text-sm mt-1">
+                                <Phone className="w-4 h-4 text-gray-400" />
+                                <span>{warehouse.phone}</span>
+                              </div>
+                            )}
+                            {warehouse.email && (
+                              <div className="flex items-center gap-2 text-sm mt-1">
+                                <Mail className="w-4 h-4 text-gray-400" />
+                                <span className="text-xs">{warehouse.email}</span>
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="space-y-2">
+                              <div className="flex justify-between text-sm">
+                                <span className="text-gray-600">
+                                  {getTranslation(locale, 'warehouses.capacity')}:
+                                </span>
+                                <span className="font-medium">{warehouse.capacity}</span>
+                              </div>
+                              <div className="flex justify-between text-sm">
+                                <span className="text-gray-600">
+                                  {getTranslation(locale, 'warehouses.utilization')}:
+                                </span>
+                                <span className="font-medium">{warehouse.utilization}%</span>
+                              </div>
+                              <div className="flex justify-between text-sm">
+                                <span className="text-gray-600">
+                                  {getTranslation(locale, 'warehouses.availableSpace')}:
+                                </span>
+                                <span className="font-medium text-green-600">{warehouse.availableSpace}</span>
+                              </div>
+                              <div className={`text-xs px-2 py-1 rounded-full text-center ${utilInfo.color}`}>
+                                {utilInfo.label}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="space-y-2">
+                              <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                warehouse.status === 'active'
+                                  ? 'bg-green-100 text-green-800'
+                                  : 'bg-red-100 text-red-800'
+                              }`}>
+                                {warehouse.status === 'active'
+                                  ? getTranslation(locale, 'common.active')
+                                  : getTranslation(locale, 'common.inactive')}
                               </span>
-                              <span className="font-medium">{warehouse.totalShipments}</span>
+                              <div className="text-xs text-gray-500">
+                                {getTranslation(locale, 'warehouses.shipments')}: {warehouse.shipmentCount}
+                              </div>
                             </div>
-                            <div className="flex justify-between text-sm">
-                              <span className="text-gray-600">
-                                {getTranslation(locale, 'warehouses.pending')}
-                              </span>
-                              <span className="font-medium text-yellow-600">{warehouse.pendingShipments}</span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => router.push(`/admin/warehouses/${warehouse.id}`)}
+                                className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
+                                title={getTranslation(locale, 'warehouses.viewDetails')}
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => router.push(`/admin/warehouses/${warehouse.id}/edit`)}
+                                className="p-2 text-green-600 hover:text-green-800 hover:bg-green-50 rounded transition-colors"
+                                title={getTranslation(locale, 'warehouses.editWarehouse')}
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => openStatusModal(warehouse)}
+                                className={`p-2 rounded hover:bg-gray-100 transition-colors ${
+                                  warehouse.status === 'active' 
+                                    ? 'text-red-600 hover:text-red-800' 
+                                    : 'text-green-600 hover:text-green-800'
+                                }`}
+                                title={getTranslation(locale, 'warehouses.toggleStatus')}
+                              >
+                                {warehouse.status === 'active' ? (
+                                  <AlertCircle className="w-4 h-4" />
+                                ) : (
+                                  <BarChart3 className="w-4 h-4" />
+                                )}
+                              </button>
+                              <button
+                                onClick={() => openDeleteModal(warehouse)}
+                                className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
+                                title={getTranslation(locale, 'common.delete')}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
                             </div>
-                            <div className="flex justify-between text-sm">
-                              <span className="text-gray-600">
-                                {getTranslation(locale, 'warehouses.staff')}
-                              </span>
-                              <span className="font-medium">{warehouse.staffCount}</span>
-                            </div>
-                            <div className="text-xs text-gray-500">
-                              {getTranslation(locale, 'common.updated')}: {warehouse.lastUpdated}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                            warehouse.isActive
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-red-100 text-red-800'
-                          }`}>
-                            {warehouse.isActive
-                              ? getTranslation(locale, 'common.active')
-                              : getTranslation(locale, 'common.inactive')}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <div className="flex items-center gap-2">
-                            <Link
-                              href={`/admin/warehouses/${warehouse.id}`}
-                              className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
-                              title={getTranslation(locale, 'common.view')}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Link>
-                            <Link
-                              href={`/admin/warehouses/${warehouse.id}/edit`}
-                              className="p-2 text-green-600 hover:text-green-800 hover:bg-green-50 rounded"
-                              title={getTranslation(locale, 'common.edit')}
-                            >
-                              <Edit className="w-4 h-4" />
-                            </Link>
-                            <button
-                              onClick={() => handleToggleStatus(warehouse.id, warehouse.isActive)}
-                              className={`p-2 rounded hover:bg-gray-100 ${
-                                warehouse.isActive 
-                                  ? 'text-red-600 hover:text-red-800' 
-                                  : 'text-green-600 hover:text-green-800'
-                              }`}
-                              title={warehouse.isActive 
-                                ? getTranslation(locale, 'common.deactivate')
-                                : getTranslation(locale, 'common.activate')}
-                            >
-                              {warehouse.isActive ? (
-                                <XCircle className="w-4 h-4" />
-                              ) : (
-                                <CheckCircle className="w-4 h-4" />
-                              )}
-                            </button>
-                            <button
-                              onClick={() => handleDelete(warehouse.id)}
-                              className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
-                              title={getTranslation(locale, 'common.delete')}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
 
               {/* Pagination */}
-              {filteredWarehouses.length > itemsPerPage && (
-                <div className="px-6 py-4 border-t flex items-center justify-between">
+              {totalPages > 1 && (
+                <div className="px-6 py-4 border-t flex flex-col sm:flex-row items-center justify-between gap-4">
                   <div className="text-sm text-gray-700">
-                    {getTranslation(locale, 'common.showing')} {(currentPage - 1) * itemsPerPage + 1} {getTranslation(locale, 'common.to')} {Math.min(
+                    {getTranslation(locale, 'common.showing')} {((currentPage - 1) * itemsPerPage) + 1} {getTranslation(locale, 'common.to')} {Math.min(
                       currentPage * itemsPerPage,
-                      filteredWarehouses.length
-                    )} {getTranslation(locale, 'common.of')} {filteredWarehouses.length} {getTranslation(locale, 'common.results')}
+                      totalCount
+                    )} {getTranslation(locale, 'common.of')} {totalCount} {getTranslation(locale, 'common.results')}
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex items-center gap-2">
                     <button
-                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      onClick={() => handlePageChange(currentPage - 1)}
                       disabled={currentPage === 1}
                       className="px-3 py-1 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       {getTranslation(locale, 'common.previous')}
                     </button>
+                    
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      let pageNum;
+                      if (totalPages <= 5) {
+                        pageNum = i + 1;
+                      } else if (currentPage <= 3) {
+                        pageNum = i + 1;
+                      } else if (currentPage >= totalPages - 2) {
+                        pageNum = totalPages - 4 + i;
+                      } else {
+                        pageNum = currentPage - 2 + i;
+                      }
+                      
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => handlePageChange(pageNum)}
+                          className={`px-3 py-1 border rounded-lg transition-colors ${
+                            currentPage === pageNum
+                              ? 'bg-blue-600 text-white border-blue-600'
+                              : 'hover:bg-gray-50'
+                          }`}
+                        >
+                          {pageNum}
+                        </button>
+                      );
+                    })}
+                    
                     <button
-                      onClick={() =>
-                        setCurrentPage((p) =>
-                          p < Math.ceil(filteredWarehouses.length / itemsPerPage)
-                            ? p + 1
-                            : p
-                        )
-                      }
-                      disabled={
-                        currentPage >=
-                        Math.ceil(filteredWarehouses.length / itemsPerPage)
-                      }
+                      onClick={() => handlePageChange(currentPage + 1)}
+                      disabled={currentPage >= totalPages}
                       className="px-3 py-1 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       {getTranslation(locale, 'common.next')}
@@ -865,6 +1030,146 @@ export default function AdminWarehousesPage() {
           )}
         </div>
       </div>
-    </DashboardLayout>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && selectedWarehouse && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-red-100 rounded-lg">
+                  <AlertCircle className="w-6 h-6 text-red-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {getTranslation(locale, 'warehouses.deleteWarehouse')}
+                </h3>
+              </div>
+              
+              <p className="text-gray-600 mb-6">
+                {getTranslation(locale, 'warehouses.deleteConfirm')}
+              </p>
+              
+              <div className="bg-gray-50 p-4 rounded-lg mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
+                    <Building className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-900">{selectedWarehouse.name}</p>
+                    <p className="text-sm text-gray-500">{selectedWarehouse.code} - {selectedWarehouse.city}</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={closeModals}
+                  disabled={modalLoading}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                >
+                  {getTranslation(locale, 'common.cancel')}
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={modalLoading}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors flex items-center gap-2"
+                >
+                  {modalLoading && (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  )}
+                  {getTranslation(locale, 'common.delete')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Status Change Modal */}
+      {showStatusModal && selectedWarehouse && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className={`p-2 rounded-lg ${
+                  selectedWarehouse.status === 'active' 
+                    ? 'bg-red-100' 
+                    : 'bg-green-100'
+                }`}>
+                  {selectedWarehouse.status === 'active' ? (
+                    <AlertCircle className="w-6 h-6 text-red-600" />
+                  ) : (
+                    <BarChart3 className="w-6 h-6 text-green-600" />
+                  )}
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {getTranslation(locale, 'warehouses.toggleStatus')}
+                </h3>
+              </div>
+              
+              <p className="text-gray-600 mb-6">
+                {getTranslation(locale, 'warehouses.statusConfirm').replace(
+                  '{action}', 
+                  selectedWarehouse.status === 'active' 
+                    ? getTranslation(locale, 'common.deactivate')
+                    : getTranslation(locale, 'common.activate')
+                )}
+              </p>
+              
+              <div className="bg-gray-50 p-4 rounded-lg mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
+                    <Building className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-900">{selectedWarehouse.name}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className={`text-xs px-2 py-1 rounded-full ${
+                        selectedWarehouse.status === 'active'
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-red-100 text-red-800'
+                      }`}>
+                        {selectedWarehouse.status === 'active'
+                          ? getTranslation(locale, 'common.active')
+                          : getTranslation(locale, 'common.inactive')}
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        {selectedWarehouse.code} • {selectedWarehouse.city}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={closeModals}
+                  disabled={modalLoading}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                >
+                  {getTranslation(locale, 'common.cancel')}
+                </button>
+                <button
+                  onClick={handleToggleStatus}
+                  disabled={modalLoading}
+                  className={`px-4 py-2 text-white rounded-lg hover:opacity-90 disabled:opacity-50 transition-colors flex items-center gap-2 ${
+                    selectedWarehouse.status === 'active'
+                      ? 'bg-red-600 hover:bg-red-700'
+                      : 'bg-green-600 hover:bg-green-700'
+                  }`}
+                >
+                  {modalLoading && (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  )}
+                  {selectedWarehouse.status === 'active'
+                    ? getTranslation(locale, 'common.deactivate')
+                    : getTranslation(locale, 'common.activate')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

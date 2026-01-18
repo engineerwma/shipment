@@ -16,11 +16,13 @@ import {
   CheckCircle,
   Clock,
   XCircle,
+  RefreshCw,
 } from 'lucide-react';
-import DashboardLayout from '@/components/Layout/DashboardLayout';
 import { useLocale } from '../../../app/contexts/LocaleContext';
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
-// Simple translation function
+// Simple translation function (keep your existing one)
 const getTranslation = (locale: 'en' | 'ar', key: string): string => {
   const translations = {
     en: {
@@ -56,6 +58,12 @@ const getTranslation = (locale: 'en' | 'ar', key: string): string => {
         to: 'to',
         of: 'of',
         results: 'results',
+        refresh: 'Refresh',
+        confirmDelete: 'Are you sure?',
+        yes: 'Yes',
+        no: 'No',
+        success: 'Success',
+        error: 'Error',
       },
       shipments: {
         title: 'Shipments Management',
@@ -70,6 +78,13 @@ const getTranslation = (locale: 'en' | 'ar', key: string): string => {
         pending: 'Pending',
         loadingShipments: 'Loading shipments...',
         confirmDelete: 'Delete this shipment?',
+        deleteSuccess: 'Shipment deleted successfully',
+        deleteError: 'Failed to delete shipment',
+        fetchError: 'Failed to fetch shipments',
+        noShipments: 'No shipments found',
+        today: 'Today',
+        thisWeek: 'This Week',
+        thisMonth: 'This Month',
       },
     },
     ar: {
@@ -105,6 +120,12 @@ const getTranslation = (locale: 'en' | 'ar', key: string): string => {
         to: 'إلى',
         of: 'من',
         results: 'نتيجة',
+        refresh: 'تحديث',
+        confirmDelete: 'هل أنت متأكد؟',
+        yes: 'نعم',
+        no: 'لا',
+        success: 'نجاح',
+        error: 'خطأ',
       },
       shipments: {
         title: 'إدارة الشحنات',
@@ -119,6 +140,13 @@ const getTranslation = (locale: 'en' | 'ar', key: string): string => {
         pending: 'معلق',
         loadingShipments: 'جاري تحميل الشحنات...',
         confirmDelete: 'حذف هذه الشحنة؟',
+        deleteSuccess: 'تم حذف الشحنة بنجاح',
+        deleteError: 'فشل حذف الشحنة',
+        fetchError: 'فشل تحميل الشحنات',
+        noShipments: 'لا توجد شحنات',
+        today: 'اليوم',
+        thisWeek: 'هذا الأسبوع',
+        thisMonth: 'هذا الشهر',
       },
     },
   };
@@ -133,269 +161,210 @@ const getTranslation = (locale: 'en' | 'ar', key: string): string => {
   return value || key;
 };
 
+interface Shipment {
+  id: string;
+  trackingNumber: string;
+  barcode: string;
+  customerName: string;
+  customerPhone: string;
+  customerCity: string;
+  customerAddress: string;
+  customerZone: string;
+  status: string;
+  shippingCost: number;
+  codAmount: number;
+  declaredValue: number;
+  description: string;
+  weight?: number;
+  dimensions?: string;
+  createdAt: string;
+  merchant: {
+    id: string;
+    name: string;
+    companyName?: string;
+    email: string;
+  };
+  driver?: {
+    id: string;
+    name: string;
+    phone: string;
+  };
+  warehouse?: {
+    id: string;
+    name: string;
+    city: string;
+  };
+}
+
+interface Pagination {
+  page: number;
+  limit: number;
+  total: number;
+  pages: number;
+}
+
 export default function AdminShipmentsPage() {
   const { locale } = useLocale();
-  const [shipments, setShipments] = useState<any[]>([]);
-  const [filteredShipments, setFilteredShipments] = useState<any[]>([]);
+  const [shipments, setShipments] = useState<Shipment[]>([]);
+  const [filteredShipments, setFilteredShipments] = useState<Shipment[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [dateRangeFilter, setDateRangeFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
   const itemsPerPage = 10;
 
   const isRTL = locale === 'ar';
 
-  useEffect(() => {
-    fetchShipments();
-  }, []);
-
-  useEffect(() => {
-    filterShipments();
-  }, [searchTerm, statusFilter, shipments]);
-
-  const fetchShipments = async () => {
+  // Fetch shipments from API
+  const fetchShipments = async (page = 1) => {
+    setLoading(true);
     try {
-      // Mock data for now
-      const mockShipments = [
-        {
-          id: '1',
-          trackingNumber: 'TRK0012345',
-          barcode: 'BAR12345',
-          customerName: 'Ahmed Mohamed',
-          customerPhone: '+201000000001',
-          customerCity: 'Cairo',
-          status: 'DELIVERED',
-          shippingCost: 150,
-          codAmount: 500,
-          createdAt: new Date('2024-01-15'),
-          merchant: {
-            name: 'Tech Store',
-            companyName: 'Tech Store LLC',
-          },
-          driver: {
-            name: 'Mohamed Ali',
-          },
-        },
-        {
-          id: '2',
-          trackingNumber: 'TRK0012346',
-          barcode: 'BAR12346',
-          customerName: 'Sara Ali',
-          customerPhone: '+201000000002',
-          customerCity: 'Alexandria',
-          status: 'WITH_DRIVER',
-          shippingCost: 120,
-          codAmount: 300,
-          createdAt: new Date('2024-01-14'),
-          merchant: {
-            name: 'Fashion Shop',
-            companyName: 'Fashion Shop Co.',
-          },
-          driver: {
-            name: 'Omar Hassan',
-          },
-        },
-        {
-          id: '3',
-          trackingNumber: 'TRK0012347',
-          barcode: 'BAR12347',
-          customerName: 'Omar Hassan',
-          customerPhone: '+201000000003',
-          customerCity: 'Giza',
-          status: 'IN_WAREHOUSE',
-          shippingCost: 90,
-          codAmount: 0,
-          createdAt: new Date('2024-01-13'),
-          merchant: {
-            name: 'Book Store',
-            companyName: 'Books R Us',
-          },
-          driver: null,
-        },
-        {
-          id: '4',
-          trackingNumber: 'TRK0012348',
-          barcode: 'BAR12348',
-          customerName: 'Fatima Mahmoud',
-          customerPhone: '+201000000004',
-          customerCity: 'Cairo',
-          status: 'NEW',
-          shippingCost: 110,
-          codAmount: 200,
-          createdAt: new Date('2024-01-12'),
-          merchant: {
-            name: 'Electronics Store',
-            companyName: 'Electronics Co.',
-          },
-          driver: null,
-        },
-        {
-          id: '5',
-          trackingNumber: 'TRK0012349',
-          barcode: 'BAR12349',
-          customerName: 'Khalid Ahmed',
-          customerPhone: '+201000000005',
-          customerCity: 'Alexandria',
-          status: 'DELIVERED',
-          shippingCost: 85,
-          codAmount: 150,
-          createdAt: new Date('2024-01-11'),
-          merchant: {
-            name: 'Home Goods',
-            companyName: 'Home Goods Ltd.',
-          },
-          driver: {
-            name: 'Ahmed Sami',
-          },
-        },
-        {
-          id: '6',
-          trackingNumber: 'TRK0012350',
-          barcode: 'BAR12350',
-          customerName: 'Nadia Salem',
-          customerPhone: '+201000000006',
-          customerCity: 'Port Said',
-          status: 'DELIVERY_FAILED',
-          shippingCost: 95,
-          codAmount: 180,
-          createdAt: new Date('2024-01-10'),
-          merchant: {
-            name: 'Sports Gear',
-            companyName: 'Sports Gear Inc.',
-          },
-          driver: {
-            name: 'Youssef Ahmed',
-          },
-        },
-        {
-          id: '7',
-          trackingNumber: 'TRK0012351',
-          barcode: 'BAR12351',
-          customerName: 'Mahmoud Khalil',
-          customerPhone: '+201000000007',
-          customerCity: 'Luxor',
-          status: 'RETURNED',
-          shippingCost: 120,
-          codAmount: 400,
-          createdAt: new Date('2024-01-09'),
-          merchant: {
-            name: 'Jewelry Store',
-            companyName: 'Golden Jewelry',
-          },
-          driver: {
-            name: 'Hassan Omar',
-          },
-        },
-        {
-          id: '8',
-          trackingNumber: 'TRK0012352',
-          barcode: 'BAR12352',
-          customerName: 'Layla Mostafa',
-          customerPhone: '+201000000008',
-          customerCity: 'Aswan',
-          status: 'PARTIAL_RETURNED',
-          shippingCost: 130,
-          codAmount: 250,
-          createdAt: new Date('2024-01-08'),
-          merchant: {
-            name: 'Perfume Shop',
-            companyName: 'Scents & Aromas',
-          },
-          driver: {
-            name: 'Karim Mohamed',
-          },
-        },
-        {
-          id: '9',
-          trackingNumber: 'TRK0012353',
-          barcode: 'BAR12353',
-          customerName: 'Ramy Adel',
-          customerPhone: '+201000000009',
-          customerCity: 'Suez',
-          status: 'IN_RECEIPT',
-          shippingCost: 75,
-          codAmount: 120,
-          createdAt: new Date('2024-01-07'),
-          merchant: {
-            name: 'Toy Store',
-            companyName: 'Kids World',
-          },
-          driver: null,
-        },
-        {
-          id: '10',
-          trackingNumber: 'TRK0012354',
-          barcode: 'BAR12354',
-          customerName: 'Hala Nasser',
-          customerPhone: '+201000000010',
-          customerCity: 'Ismailia',
-          status: 'DELIVERED',
-          shippingCost: 110,
-          codAmount: 320,
-          createdAt: new Date('2024-01-06'),
-          merchant: {
-            name: 'Furniture Store',
-            companyName: 'Home Comfort',
-          },
-          driver: {
-            name: 'Said Mahmoud',
-          },
-        },
-      ];
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: itemsPerPage.toString(),
+      });
 
-      // Simulate API delay
-      setTimeout(() => {
-        setShipments(mockShipments);
-        setFilteredShipments(mockShipments);
-        setLoading(false);
-      }, 500);
+      if (searchTerm) params.append('search', searchTerm);
+      if (statusFilter !== 'ALL') params.append('status', statusFilter);
+
+      // Handle date range
+      if (dateRangeFilter !== 'all') {
+        const now = new Date();
+        let startDate = new Date();
+
+        switch (dateRangeFilter) {
+          case 'today':
+            startDate.setHours(0, 0, 0, 0);
+            break;
+          case 'week':
+            startDate.setDate(now.getDate() - 7);
+            break;
+          case 'month':
+            startDate.setMonth(now.getMonth() - 1);
+            break;
+        }
+
+        params.append('startDate', startDate.toISOString());
+        params.append('endDate', now.toISOString());
+      }
+
+      const response = await fetch(`/api/shipments?${params}`);
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch shipments');
+      }
+
+      const data = await response.json();
+      setShipments(data.shipments);
+      setFilteredShipments(data.shipments);
+      setTotalPages(data.pagination.pages);
+      setTotalItems(data.pagination.total);
+      setCurrentPage(data.pagination.page);
     } catch (error) {
       console.error('Error fetching shipments:', error);
+      toast.error(getTranslation(locale, 'shipments.fetchError'));
+    } finally {
       setLoading(false);
     }
   };
 
-  const filterShipments = () => {
-    let filtered = shipments;
+  // Initial fetch and periodic refresh
+  useEffect(() => {
+    fetchShipments();
 
-    // Search filter
-    if (searchTerm) {
-      filtered = filtered.filter(
-        (shipment) =>
-          shipment.trackingNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          shipment.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          shipment.customerPhone.includes(searchTerm)
-      );
-    }
+    // Set up polling for real-time updates
+    const interval = setInterval(() => {
+      fetchShipments(currentPage);
+    }, 30000); // Refresh every 30 seconds
 
-    // Status filter
-    if (statusFilter !== 'ALL') {
-      filtered = filtered.filter(
-        (shipment) => shipment.status === statusFilter
-      );
-    }
+    return () => clearInterval(interval);
+  }, [currentPage]);
 
-    setFilteredShipments(filtered);
-    setCurrentPage(1);
-  };
+  // Handle search and filter
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      fetchShipments(1);
+    }, 500); // Debounce search
 
+    return () => clearTimeout(timeoutId);
+  }, [searchTerm, statusFilter, dateRangeFilter]);
+
+  // Handle delete shipment
   const handleDelete = async (id: string) => {
-    if (confirm(getTranslation(locale, 'shipments.confirmDelete'))) {
-      try {
-        // In a real app, call API here
-        console.log('Deleting shipment:', id);
-        fetchShipments(); // Refresh data
-      } catch (error) {
-        console.error('Error deleting shipment:', error);
+    if (!confirm(getTranslation(locale, 'shipments.confirmDelete'))) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/shipments/${id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to delete shipment');
       }
+
+      toast.success(getTranslation(locale, 'shipments.deleteSuccess'));
+      fetchShipments(currentPage); // Refresh the list
+    } catch (error: any) {
+      console.error('Error deleting shipment:', error);
+      toast.error(error.message || getTranslation(locale, 'shipments.deleteError'));
     }
   };
 
-  const paginatedShipments = filteredShipments.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+  // Handle page change
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    fetchShipments(page);
+  };
 
+  // Export to CSV
+  const handleExport = () => {
+    const headers = [
+      'Tracking Number',
+      'Barcode',
+      'Customer Name',
+      'Customer Phone',
+      'Customer City',
+      'Status',
+      'Shipping Cost',
+      'COD Amount',
+      'Merchant',
+      'Created At'
+    ];
+
+    const csvContent = [
+      headers.join(','),
+      ...filteredShipments.map(shipment => [
+        shipment.trackingNumber,
+        shipment.barcode,
+        `"${shipment.customerName}"`,
+        shipment.customerPhone,
+        shipment.customerCity,
+        getTranslation(locale, `status.${shipment.status}`),
+        shipment.shippingCost,
+        shipment.codAmount,
+        shipment.merchant.companyName || shipment.merchant.name,
+        new Date(shipment.createdAt).toLocaleDateString()
+      ].join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `shipments_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Status options
   const statusOptions = [
     { value: 'ALL', label: getTranslation(locale, 'common.allStatus') },
     { value: 'NEW', label: getTranslation(locale, 'status.NEW') },
@@ -408,10 +377,19 @@ export default function AdminShipmentsPage() {
     { value: 'PARTIAL_RETURNED', label: getTranslation(locale, 'status.PARTIAL_RETURNED') },
   ];
 
+  // Date range options
+  const dateRangeOptions = [
+    { value: 'all', label: getTranslation(locale, 'common.allStatus') },
+    { value: 'today', label: getTranslation(locale, 'shipments.today') },
+    { value: 'week', label: getTranslation(locale, 'shipments.thisWeek') },
+    { value: 'month', label: getTranslation(locale, 'shipments.thisMonth') },
+  ];
+
+  // Calculate stats from real data
   const statCards = [
     { 
       label: getTranslation(locale, 'shipments.total'), 
-      value: shipments.length, 
+      value: totalItems, 
       icon: Package, 
       color: 'bg-blue-500',
       description: locale === 'en' ? 'Total shipments' : 'إجمالي الشحنات'
@@ -425,14 +403,19 @@ export default function AdminShipmentsPage() {
     },
     { 
       label: getTranslation(locale, 'shipments.deliveredToday'), 
-      value: 24, 
+      value: shipments.filter((s) => {
+        const today = new Date();
+        const shipmentDate = new Date(s.createdAt);
+        return s.status === 'DELIVERED' && 
+               shipmentDate.toDateString() === today.toDateString();
+      }).length, 
       icon: CheckCircle, 
       color: 'bg-green-500',
       description: locale === 'en' ? 'Delivered today' : 'تم التسليم اليوم'
     },
     { 
       label: getTranslation(locale, 'shipments.pending'), 
-      value: shipments.filter((s) => s.status === 'NEW').length, 
+      value: shipments.filter((s) => s.status === 'NEW' || s.status === 'IN_RECEIPT').length, 
       icon: Clock, 
       color: 'bg-yellow-500',
       description: locale === 'en' ? 'Awaiting processing' : 'في انتظار المعالجة'
@@ -454,7 +437,19 @@ export default function AdminShipmentsPage() {
   };
 
   return (
-   
+    <>
+      <ToastContainer
+        position={isRTL ? 'top-left' : 'top-right'}
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop={true}
+        closeOnClick
+        rtl={isRTL}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+      />
+
       <div className="space-y-6">
         {/* Header with actions */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -467,11 +462,18 @@ export default function AdminShipmentsPage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <button className="btn btn-secondary flex items-center gap-2">
-              <Printer className="w-4 h-4" />
-              <span>{getTranslation(locale, 'shipments.printReport')}</span>
+            <button
+              onClick={() => fetchShipments(currentPage)}
+              className="btn btn-secondary flex items-center gap-2"
+              disabled={loading}
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              <span>{getTranslation(locale, 'common.refresh')}</span>
             </button>
-            <button className="btn btn-secondary flex items-center gap-2">
+            <button
+              onClick={handleExport}
+              className="btn btn-secondary flex items-center gap-2"
+            >
               <Download className="w-4 h-4" />
               <span>{getTranslation(locale, 'shipments.export')}</span>
             </button>
@@ -508,7 +510,7 @@ export default function AdminShipmentsPage() {
 
         {/* Filters */}
         <div className="bg-white rounded-lg shadow-sm border p-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 {getTranslation(locale, 'common.search')}
@@ -546,11 +548,34 @@ export default function AdminShipmentsPage() {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 {getTranslation(locale, 'common.dateRange')}
               </label>
+              <select
+                value={dateRangeFilter}
+                onChange={(e) => setDateRangeFilter(e.target.value as any)}
+                className="input w-full"
+              >
+                {dateRangeOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                &nbsp;
+              </label>
               <div className="flex gap-2">
                 <input 
                   type="date" 
                   className="input flex-1" 
                   dir="ltr"
+                  onChange={(e) => {
+                    // Handle custom date range
+                    if (e.target.value) {
+                      setDateRangeFilter('all');
+                    }
+                  }}
                 />
                 <span className="self-center text-gray-500">
                   {getTranslation(locale, 'common.to')}
@@ -559,6 +584,12 @@ export default function AdminShipmentsPage() {
                   type="date" 
                   className="input flex-1" 
                   dir="ltr"
+                  onChange={(e) => {
+                    // Handle custom date range
+                    if (e.target.value) {
+                      setDateRangeFilter('all');
+                    }
+                  }}
                 />
               </div>
             </div>
@@ -573,6 +604,25 @@ export default function AdminShipmentsPage() {
               <p className="text-gray-600 mt-2">
                 {getTranslation(locale, 'shipments.loadingShipments')}
               </p>
+            </div>
+          ) : filteredShipments.length === 0 ? (
+            <div className="p-8 text-center">
+              <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                {getTranslation(locale, 'shipments.noShipments')}
+              </h3>
+              <p className="text-gray-600 mb-4">
+                {searchTerm || statusFilter !== 'ALL' || dateRangeFilter !== 'all'
+                  ? 'Try changing your filters'
+                  : 'Create your first shipment to get started'}
+              </p>
+              <Link
+                href="/admin/shipments/new"
+                className="btn btn-primary inline-flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                {getTranslation(locale, 'shipments.newShipment')}
+              </Link>
             </div>
           ) : (
             <>
@@ -604,7 +654,7 @@ export default function AdminShipmentsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {paginatedShipments.map((shipment) => {
+                    {filteredShipments.map((shipment) => {
                       const StatusIcon = getStatusIcon(shipment.status);
                       return (
                         <tr key={shipment.id} className="hover:bg-gray-50">
@@ -626,9 +676,9 @@ export default function AdminShipmentsPage() {
                             </div>
                           </td>
                           <td className="px-6 py-4">
-                            <div className="font-medium">{shipment.merchant?.name}</div>
+                            <div className="font-medium">{shipment.merchant.name}</div>
                             <div className="text-sm text-gray-500">
-                              {shipment.merchant?.companyName}
+                              {shipment.merchant.companyName || shipment.merchant.email}
                             </div>
                           </td>
                           <td className="px-6 py-4">
@@ -640,19 +690,31 @@ export default function AdminShipmentsPage() {
                               <StatusIcon className="w-3 h-3" />
                               {getTranslation(locale, `status.${shipment.status}`)}
                             </span>
+                            {shipment.driver && (
+                              <div className="text-xs text-gray-500 mt-1">
+                                {locale === 'en' ? 'Driver: ' : 'السائق: '}
+                                {shipment.driver.name}
+                              </div>
+                            )}
                           </td>
                           <td className="px-6 py-4">
                             <div className="font-medium">
-                              EGP {shipment.shippingCost}
+                              EGP {shipment.shippingCost.toFixed(2)}
                             </div>
                             {shipment.codAmount > 0 && (
                               <div className="text-xs text-green-600">
-                                COD: EGP {shipment.codAmount}
+                                COD: EGP {shipment.codAmount.toFixed(2)}
                               </div>
                             )}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {new Date(shipment.createdAt).toLocaleDateString(locale === 'ar' ? 'ar-EG' : 'en-US')}
+                            <div className="text-xs text-gray-400">
+                              {new Date(shipment.createdAt).toLocaleTimeString([], { 
+                                hour: '2-digit', 
+                                minute: '2-digit' 
+                              })}
+                            </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                             <div className="flex items-center gap-2">
@@ -664,16 +726,17 @@ export default function AdminShipmentsPage() {
                                 <Eye className="w-4 h-4" />
                               </Link>
                               <Link
-                                href={`/admin/shipments/${shipment.id}/edit`}
-                                className="p-1 text-green-600 hover:text-green-800 hover:bg-green-50 rounded"
-                                title={getTranslation(locale, 'common.edit')}
-                              >
-                                <Edit className="w-4 h-4" />
-                              </Link>
+                                    href={`/admin/shipments/${shipment.id}/edit`}
+                                    className="p-1 text-green-600 hover:text-green-800 hover:bg-green-50 rounded"
+                                    title={getTranslation(locale, 'common.edit')}
+                                  >
+                                    <Edit className="w-4 h-4" />
+                                  </Link>
                               <button
                                 onClick={() => handleDelete(shipment.id)}
-                                className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+                                className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded disabled:opacity-50 disabled:cursor-not-allowed"
                                 title={getTranslation(locale, 'common.delete')}
+                                disabled={shipment.status !== 'NEW'}
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -687,34 +750,53 @@ export default function AdminShipmentsPage() {
               </div>
 
               {/* Pagination */}
-              {filteredShipments.length > itemsPerPage && (
+              {totalPages > 1 && (
                 <div className="px-6 py-4 border-t flex items-center justify-between">
                   <div className="text-sm text-gray-700">
                     {getTranslation(locale, 'common.showing')} {(currentPage - 1) * itemsPerPage + 1} {getTranslation(locale, 'common.to')} {Math.min(
                       currentPage * itemsPerPage,
-                      filteredShipments.length
-                    )} {getTranslation(locale, 'common.of')} {filteredShipments.length} {getTranslation(locale, 'common.results')}
+                      totalItems
+                    )} {getTranslation(locale, 'common.of')} {totalItems} {getTranslation(locale, 'common.results')}
                   </div>
                   <div className="flex gap-2">
                     <button
-                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      onClick={() => handlePageChange(currentPage - 1)}
                       disabled={currentPage === 1}
                       className="px-3 py-1 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       {getTranslation(locale, 'common.previous')}
                     </button>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        let pageNum;
+                        if (totalPages <= 5) {
+                          pageNum = i + 1;
+                        } else if (currentPage <= 3) {
+                          pageNum = i + 1;
+                        } else if (currentPage >= totalPages - 2) {
+                          pageNum = totalPages - 4 + i;
+                        } else {
+                          pageNum = currentPage - 2 + i;
+                        }
+
+                        return (
+                          <button
+                            key={pageNum}
+                            onClick={() => handlePageChange(pageNum)}
+                            className={`px-3 py-1 border rounded-lg transition-colors ${
+                              currentPage === pageNum
+                                ? 'bg-blue-600 text-white border-blue-600'
+                                : 'hover:bg-gray-50'
+                            }`}
+                          >
+                            {pageNum}
+                          </button>
+                        );
+                      })}
+                    </div>
                     <button
-                      onClick={() =>
-                        setCurrentPage((p) =>
-                          p < Math.ceil(filteredShipments.length / itemsPerPage)
-                            ? p + 1
-                            : p
-                        )
-                      }
-                      disabled={
-                        currentPage >=
-                        Math.ceil(filteredShipments.length / itemsPerPage)
-                      }
+                      onClick={() => handlePageChange(currentPage + 1)}
+                      disabled={currentPage === totalPages}
                       className="px-3 py-1 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       {getTranslation(locale, 'common.next')}
@@ -726,6 +808,7 @@ export default function AdminShipmentsPage() {
           )}
         </div>
       </div>
+    </>
   );
 }
 
