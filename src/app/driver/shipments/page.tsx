@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import {
   Search,
   Filter,
-  Eye,
+   Package,
   Navigation,
   CheckCircle,
   AlertCircle,

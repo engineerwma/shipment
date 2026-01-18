@@ -450,9 +450,8 @@ function getStatusColor(status: string): string {
   };
   return colors[status] || 'bg-gray-100 text-gray-800';
 }
-
 function getStatusText(locale: Locale, status: string): string {
-  const translations = {
+  const translations: Record<Locale, Record<string, string>> = {
     en: {
       NEW: 'New',
       IN_RECEIPT: 'In Receipt',
@@ -470,9 +469,11 @@ function getStatusText(locale: Locale, status: string): string {
       WITH_DRIVER: 'مع السائق',
       DELIVERED: 'تم التسليم',
       DELIVERY_FAILED: 'فشل التسليم',
-      RETURNED: 'مرتجع',
-      PARTIAL_RETURNED: 'مرتجع جزئي',
+      RETURNED: 'مرتجع',  // Fixed spelling
+      PARTIAL_RETURNED: 'مرتجع جزئي',  // Fixed spelling
     },
   };
-  return translations[locale]?.[status] || status;
+  
+  // Use optional chaining and nullish coalescing
+  return translations[locale]?.[status] ?? status;
 }

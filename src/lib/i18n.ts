@@ -90,7 +90,6 @@ const translations = {
       settings: 'الإعدادات',
       profile: 'الملف الشخصي',
       logout: 'تسجيل الخروج',
-      
     },
     auth: {
       email: 'البريد الإلكتروني',
@@ -137,14 +136,24 @@ const translations = {
 };
 
 export function useTranslation(locale: Locale) {
-  const [t, setT] = useState(() => translations[locale]);
-
-  useEffect(() => {
-    setT(translations[locale]);
-  }, [locale]);
+  // t هي دالة للبحث في الترجمات
+  const getTranslation = (key: string): string => {
+    const keys = key.split('.');
+    let value: any = translations[locale];
+    
+    for (const k of keys) {
+      value = value?.[k];
+      if (value === undefined) {
+        console.warn(`Translation not found for key: ${key} in locale: ${locale}`);
+        return key; // إرجاع المفتاح نفسه إذا لم توجد ترجمة
+      }
+    }
+    
+    return value || key;
+  };
 
   return {
-    t,
+    t: getTranslation, // t هي الآن دالة
     isRTL: locale === 'ar',
   };
 }
