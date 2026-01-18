@@ -283,9 +283,9 @@ export default function EditShipmentPage() {
       newErrors.codAmount = locale === 'en' ? 'COD amount cannot be negative' : 'مبلغ الدفع عند الاستلام لا يمكن أن يكون سالباً';
     }
 
-    if (formData.weight !== null && formData.weight < 0) {
-      newErrors.weight = locale === 'en' ? 'Weight cannot be negative' : 'الوزن لا يمكن أن يكون سالباً';
-    }
+   if (formData.weight !== null && formData.weight !== undefined && formData.weight < 0) {
+  newErrors.weight = locale === 'en' ? 'Weight cannot be negative' : 'الوزن لا يمكن أن يكون سالباً';
+}
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
