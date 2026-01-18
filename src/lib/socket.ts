@@ -1,67 +1,55 @@
 'use client';
 
-import { io, Socket } from 'socket.io-client';
+import { useEffect, useRef, useCallback } from 'react';
 
-class SocketService {
-  private socket: Socket | null = null;
-  private static instance: SocketService;
+export function useSocket() {
+  const socketRef = useRef<any>(null);
 
-  constructor() {
+  const connect = useCallback((token: string) => {
     if (typeof window === 'undefined') return;
-    
-    const token = localStorage.getItem('token');
-    this.socket = io(process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3001', {
-      auth: { token },
-      transports: ['websocket', 'polling'],
+
+    // Dynamic import to avoid SSR issues
+    import('socket.io-client').then((socketIO) => {
+      const io = socketIO.default || socketIO;
+      
+      socketRef.current = io(process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3001', {
+        auth: { token },
+        transports: ['websocket', 'polling'],
+      });
+
+      socketRef.current.on('connect', () => {
+        console.log('Socket connected');
+      });
     });
+  }, []);
 
-    this.socket.on('connect', () => {
-      console.log('Connected to WebSocket server');
-    });
+  const disconnect = useCallback(() => {
+    socketRef.current?.disconnect();
+  }, []);
 
-    this.socket.on('disconnect', () => {
-      console.log('Disconnected from WebSocket server');
-    });
-  }
+  const emit = useCallback((event: string, data: any) => {
+    socketRef.current?.emit(event, data);
+  }, []);
 
-  static getInstance(): SocketService {
-    if (!SocketService.instance) {
-      SocketService.instance = new SocketService();
-    }
-    return SocketService.instance;
-  }
+  const on = useCallback((event: string, callback: (data: any) => void) => {
+    socketRef.current?.on(event, callback);
+    // Return cleanup function
+    return () => {
+      socketRef.current?.off(event, callback);
+    };
+  }, []);
 
-  getSocket(): Socket | null {
-    return this.socket;
-  }
+  useEffect(() => {
+    return () => {
+      disconnect();
+    };
+  }, [disconnect]);
 
-  // Shipment status updates
-  onShipmentUpdate(callback: (data: any) => void) {
-    this.socket?.on('shipment:update', callback);
-  }
-
-  emitShipmentUpdate(shipmentId: string, status: string, location?: { lat: number; lng: number }) {
-    this.socket?.emit('shipment:update', { shipmentId, status, location });
-  }
-
-  // Driver location tracking
-  onDriverLocationUpdate(callback: (data: any) => void) {
-    this.socket?.on('driver:location', callback);
-  }
-
-  emitDriverLocation(lat: number, lng: number) {
-    this.socket?.emit('driver:location', { lat, lng });
-  }
-
-  // Notifications
-  onNotification(callback: (data: any) => void) {
-    this.socket?.on('notification', callback);
-  }
-
-  // Cleanup
-  disconnect() {
-    this.socket?.disconnect();
-  }
+  return {
+    connect,
+    disconnect,
+    emit,
+    on,
+    socket: socketRef.current,
+  };
 }
-
-export const socketService = SocketService.getInstance();
