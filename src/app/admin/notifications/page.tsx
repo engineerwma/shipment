@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { 
   Bell, 
   Package, 
@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import DashboardLayout from '@/components/Layout/DashboardLayout';
-import { useLocale } from '../../../app/contexts/LocaleContext';
+import { useLocale } from '@/app/contexts/LocaleContext';
 
 type NotificationType = 'shipment' | 'payment' | 'system' | 'driver' | 'merchant' | 'general';
 type NotificationStatus = 'all' | 'unread' | 'read';
@@ -199,7 +199,7 @@ const getTranslation = (locale: 'en' | 'ar', key: string): string => {
 };
 
 export default function NotificationsPage() {
-  const { locale } = useLocale();
+  const { locale, setLocale } = useLocale();
   const [notifications, setNotifications] = useState<Notification[]>([
     {
       id: '1',
@@ -453,18 +453,24 @@ export default function NotificationsPage() {
     }
   };
 
+  const t = (key: string) => getTranslation(locale, key);
+
   return (
-    <DashboardLayout role="ADMIN">
+    <DashboardLayout 
+      role="ADMIN"
+      locale={locale}
+      onLocaleChange={setLocale}
+    >
       <div className="max-w-7xl mx-auto">
         {/* Header with stats */}
         <div className="mb-8">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <div>
               <h1 className="text-2xl font-bold text-gray-800">
-                {getTranslation(locale, 'notifications.title')}
+                {t('notifications.title')}
               </h1>
               <p className="text-gray-600">
-                {getTranslation(locale, 'notifications.description')}
+                {t('notifications.description')}
               </p>
             </div>
             
@@ -473,14 +479,14 @@ export default function NotificationsPage() {
                 onClick={markAllAsRead}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
               >
-                {getTranslation(locale, 'notifications.markAllAsRead')}
+                {t('notifications.markAllAsRead')}
               </button>
               <button
                 onClick={deleteSelected}
                 disabled={selectedNotifications.length === 0}
                 className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
               >
-                {getTranslation(locale, 'common.deleteSelected')}
+                {t('common.deleteSelected')}
               </button>
             </div>
           </div>
@@ -491,7 +497,7 @@ export default function NotificationsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">
-                    {getTranslation(locale, 'notifications.totalNotifications')}
+                    {t('notifications.totalNotifications')}
                   </p>
                   <p className="text-2xl font-bold text-gray-800">{totalNotifications}</p>
                 </div>
@@ -505,7 +511,7 @@ export default function NotificationsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">
-                    {getTranslation(locale, 'notifications.unreadNotifications')}
+                    {t('notifications.unreadNotifications')}
                   </p>
                   <p className="text-2xl font-bold text-red-600">{unreadCount}</p>
                 </div>
@@ -519,7 +525,7 @@ export default function NotificationsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">
-                    {getTranslation(locale, 'notifications.highPriority')}
+                    {t('notifications.highPriority')}
                   </p>
                   <p className="text-2xl font-bold text-orange-600">{highPriorityCount}</p>
                 </div>
@@ -542,8 +548,8 @@ export default function NotificationsPage() {
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder={getTranslation(locale, 'notifications.searchPlaceholder')}
-                  className={`input ${isRTL ? 'pr-10' : 'pl-10'} w-full`}
+                  placeholder={t('notifications.searchPlaceholder')}
+                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${isRTL ? 'pr-10' : 'pl-10'}`}
                 />
                 {searchTerm && (
                   <button
@@ -562,7 +568,7 @@ export default function NotificationsPage() {
               className="lg:hidden px-4 py-2 border rounded-lg flex items-center gap-2"
             >
               <Filter className="w-4 h-4" />
-              <span>{getTranslation(locale, 'common.filters')}</span>
+              <span>{t('common.filters')}</span>
             </button>
 
             {/* Filters - Desktop */}
@@ -570,7 +576,7 @@ export default function NotificationsPage() {
               <div className="grid grid-cols-2 lg:flex lg:flex-wrap gap-2">
                 {/* Status filter */}
                 <div className="space-x-2">
-                  <span className="text-sm text-gray-600">{getTranslation(locale, 'notifications.status')}</span>
+                  <span className="text-sm text-gray-600">{t('notifications.status')}</span>
                   {(['all', 'unread', 'read'] as NotificationStatus[]).map((status) => (
                     <button
                       key={status}
@@ -582,10 +588,10 @@ export default function NotificationsPage() {
                       }`}
                     >
                       {status === 'all' 
-                        ? getTranslation(locale, 'notifications.allStatus')
+                        ? t('notifications.allStatus')
                         : status === 'unread' 
-                          ? getTranslation(locale, 'notifications.unread')
-                          : getTranslation(locale, 'notifications.read')
+                          ? t('notifications.unread')
+                          : t('notifications.read')
                       }
                     </button>
                   ))}
@@ -593,7 +599,7 @@ export default function NotificationsPage() {
 
                 {/* Type filter */}
                 <div className="space-x-2">
-                  <span className="text-sm text-gray-600">{getTranslation(locale, 'notifications.type')}</span>
+                  <span className="text-sm text-gray-600">{t('notifications.type')}</span>
                   {(['all', 'shipment', 'payment', 'system', 'driver', 'merchant'] as const).map((type) => (
                     <button
                       key={type}
@@ -605,8 +611,8 @@ export default function NotificationsPage() {
                       }`}
                     >
                       {type === 'all' 
-                        ? getTranslation(locale, 'notifications.allTypes')
-                        : getTranslation(locale, `notifications.${type}`)
+                        ? t('notifications.allTypes')
+                        : t(`notifications.${type}`)
                       }
                     </button>
                   ))}
@@ -614,7 +620,7 @@ export default function NotificationsPage() {
 
                 {/* Priority filter */}
                 <div className="space-x-2">
-                  <span className="text-sm text-gray-600">{getTranslation(locale, 'notifications.priority')}</span>
+                  <span className="text-sm text-gray-600">{t('notifications.priority')}</span>
                   {(['all', 'high', 'medium', 'low'] as const).map((priority) => (
                     <button
                       key={priority}
@@ -627,7 +633,7 @@ export default function NotificationsPage() {
                           : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                       }`}
                     >
-                      {getTranslation(locale, `notifications.${priority}`)}
+                      {t(`notifications.${priority}`)}
                     </button>
                   ))}
                 </div>
@@ -650,32 +656,32 @@ export default function NotificationsPage() {
                     className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                   />
                   <span className="text-sm text-gray-700">
-                    {getTranslation(locale, 'common.selectAll')}
+                    {t('common.selectAll')}
                   </span>
                 </label>
                 {selectedNotifications.length > 0 && (
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-gray-600">
-                      {selectedNotifications.length} {getTranslation(locale, 'common.selected')}
+                      {selectedNotifications.length} {t('common.selected')}
                     </span>
                     <button
                       onClick={markSelectedAsRead}
                       className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
                     >
-                      {getTranslation(locale, 'common.markAsRead')}
+                      {t('common.markAsRead')}
                     </button>
                     <button
                       onClick={deleteSelected}
                       className="text-sm text-red-600 hover:text-red-800 hover:underline"
                     >
-                      {getTranslation(locale, 'common.delete')}
+                      {t('common.delete')}
                     </button>
                   </div>
                 )}
               </div>
               
               <div className="text-sm text-gray-600">
-                {filteredNotifications.length} {getTranslation(locale, 'notifications.notifications')}
+                {filteredNotifications.length} {t('notifications.notifications')}
               </div>
             </div>
           </div>
@@ -720,7 +726,7 @@ export default function NotificationsPage() {
                               </h3>
                               {!notification.read && (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                  {getTranslation(locale, 'common.new')}
+                                  {t('common.new')}
                                 </span>
                               )}
                               <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
@@ -729,7 +735,7 @@ export default function NotificationsPage() {
                                 'bg-green-100 text-green-800'
                               }`}>
                                 <PriorityIcon className="w-3 h-3 mr-1" />
-                                {getTranslation(locale, `notifications.${notification.priority}`)}
+                                {t(`notifications.${notification.priority}`)}
                               </span>
                             </div>
                             
@@ -740,7 +746,7 @@ export default function NotificationsPage() {
                             <div className="flex items-center gap-4 text-sm text-gray-500">
                               <span className="flex items-center gap-1">
                                 <Icon className="w-4 h-4" />
-                                {getTranslation(locale, `notifications.${notification.type}`)}
+                                {t(`notifications.${notification.type}`)}
                               </span>
                               <span>•</span>
                               <span className="flex items-center gap-1">
@@ -757,7 +763,7 @@ export default function NotificationsPage() {
                                 href={notification.actionUrl}
                                 className="text-sm text-blue-600 hover:text-blue-800 font-medium hover:underline"
                               >
-                                {getTranslation(locale, 'common.view')}
+                                {t('common.view')}
                               </Link>
                             )}
                             
@@ -772,21 +778,21 @@ export default function NotificationsPage() {
                                       onClick={() => markAsUnread(notification.id)}
                                       className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
                                     >
-                                      {getTranslation(locale, 'common.markAsUnread')}
+                                      {t('common.markAsUnread')}
                                     </button>
                                   ) : (
                                     <button
                                       onClick={() => markAsRead(notification.id)}
                                       className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
                                     >
-                                      {getTranslation(locale, 'common.markAsRead')}
+                                      {t('common.markAsRead')}
                                     </button>
                                   )}
                                   <button
                                     onClick={() => deleteNotification(notification.id)}
                                     className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50"
                                   >
-                                    {getTranslation(locale, 'common.delete')}
+                                    {t('common.delete')}
                                   </button>
                                 </div>
                               </div>
@@ -802,10 +808,10 @@ export default function NotificationsPage() {
               <div className="p-12 text-center">
                 <Bell className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-700 mb-2">
-                  {getTranslation(locale, 'notifications.noNotifications')}
+                  {t('notifications.noNotifications')}
                 </h3>
                 <p className="text-gray-500 max-w-md mx-auto mb-6">
-                  {getTranslation(locale, 'notifications.noNotificationsDescription')}
+                  {t('notifications.noNotificationsDescription')}
                 </p>
                 <button
                   onClick={() => {
@@ -816,7 +822,7 @@ export default function NotificationsPage() {
                   }}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                 >
-                  {getTranslation(locale, 'common.clearFilters')}
+                  {t('common.clearFilters')}
                 </button>
               </div>
             )}
@@ -827,14 +833,14 @@ export default function NotificationsPage() {
             <div className="px-6 py-4 border-t">
               <div className="flex items-center justify-between">
                 <div className="text-sm text-gray-600">
-                  {getTranslation(locale, 'notifications.showingResults')
+                  {t('notifications.showingResults')
                     .replace('{count}', Math.min(filteredNotifications.length, 10).toString())
                     .replace('{total}', filteredNotifications.length.toString())
                   }
                 </div>
                 <div className="flex gap-2">
                   <button className="px-3 py-1 border rounded-lg hover:bg-gray-50 text-sm disabled:opacity-50 transition-colors">
-                    {getTranslation(locale, 'common.previous')}
+                    {t('common.previous')}
                   </button>
                   <button className="px-3 py-1 border rounded-lg text-sm bg-blue-600 text-white">
                     1
@@ -843,7 +849,7 @@ export default function NotificationsPage() {
                     2
                   </button>
                   <button className="px-3 py-1 border rounded-lg hover:bg-gray-50 text-sm transition-colors">
-                    {getTranslation(locale, 'common.next')}
+                    {t('common.next')}
                   </button>
                 </div>
               </div>
@@ -855,26 +861,26 @@ export default function NotificationsPage() {
         <div className="mt-8 bg-white rounded-xl shadow-sm border p-6">
           <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
             <Settings className="w-5 h-5" />
-            {getTranslation(locale, 'notifications.notificationSettings')}
+            {t('notifications.notificationSettings')}
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <div className="space-y-3">
               <label className="flex items-center gap-3 cursor-pointer p-2 hover:bg-gray-50 rounded">
                 <input type="checkbox" className="w-4 h-4 text-blue-600 rounded" defaultChecked />
                 <span className="text-sm text-gray-700">
-                  {getTranslation(locale, 'notifications.emailNotifications')}
+                  {t('notifications.emailNotifications')}
                 </span>
               </label>
               <label className="flex items-center gap-3 cursor-pointer p-2 hover:bg-gray-50 rounded">
                 <input type="checkbox" className="w-4 h-4 text-blue-600 rounded" defaultChecked />
                 <span className="text-sm text-gray-700">
-                  {getTranslation(locale, 'notifications.pushNotifications')}
+                  {t('notifications.pushNotifications')}
                 </span>
               </label>
               <label className="flex items-center gap-3 cursor-pointer p-2 hover:bg-gray-50 rounded">
                 <input type="checkbox" className="w-4 h-4 text-blue-600 rounded" />
                 <span className="text-sm text-gray-700">
-                  {getTranslation(locale, 'notifications.smsNotifications')}
+                  {t('notifications.smsNotifications')}
                 </span>
               </label>
             </div>
@@ -883,19 +889,19 @@ export default function NotificationsPage() {
               <label className="flex items-center gap-3 cursor-pointer p-2 hover:bg-gray-50 rounded">
                 <input type="checkbox" className="w-4 h-4 text-blue-600 rounded" defaultChecked />
                 <span className="text-sm text-gray-700">
-                  {getTranslation(locale, 'notifications.highPriorityAlerts')}
+                  {t('notifications.highPriorityAlerts')}
                 </span>
               </label>
               <label className="flex items-center gap-3 cursor-pointer p-2 hover:bg-gray-50 rounded">
                 <input type="checkbox" className="w-4 h-4 text-blue-600 rounded" defaultChecked />
                 <span className="text-sm text-gray-700">
-                  {getTranslation(locale, 'notifications.shipmentUpdates')}
+                  {t('notifications.shipmentUpdates')}
                 </span>
               </label>
               <label className="flex items-center gap-3 cursor-pointer p-2 hover:bg-gray-50 rounded">
                 <input type="checkbox" className="w-4 h-4 text-blue-600 rounded" />
                 <span className="text-sm text-gray-700">
-                  {getTranslation(locale, 'notifications.systemAlerts')}
+                  {t('notifications.systemAlerts')}
                 </span>
               </label>
             </div>
@@ -904,19 +910,19 @@ export default function NotificationsPage() {
               <label className="flex items-center gap-3 cursor-pointer p-2 hover:bg-gray-50 rounded">
                 <input type="checkbox" className="w-4 h-4 text-blue-600 rounded" defaultChecked />
                 <span className="text-sm text-gray-700">
-                  {getTranslation(locale, 'notifications.paymentNotifications')}
+                  {t('notifications.paymentNotifications')}
                 </span>
               </label>
               <label className="flex items-center gap-3 cursor-pointer p-2 hover:bg-gray-50 rounded">
                 <input type="checkbox" className="w-4 h-4 text-blue-600 rounded" />
                 <span className="text-sm text-gray-700">
-                  {getTranslation(locale, 'notifications.weeklyReports')}
+                  {t('notifications.weeklyReports')}
                 </span>
               </label>
               <label className="flex items-center gap-3 cursor-pointer p-2 hover:bg-gray-50 rounded">
                 <input type="checkbox" className="w-4 h-4 text-blue-600 rounded" defaultChecked />
                 <span className="text-sm text-gray-700">
-                  {getTranslation(locale, 'notifications.driverUpdates')}
+                  {t('notifications.driverUpdates')}
                 </span>
               </label>
             </div>
@@ -925,7 +931,7 @@ export default function NotificationsPage() {
           <div className="mt-6 pt-6 border-t">
             <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2">
               <Save className="w-4 h-4" />
-              {getTranslation(locale, 'notifications.saveSettings')}
+              {t('notifications.saveSettings')}
             </button>
           </div>
         </div>
