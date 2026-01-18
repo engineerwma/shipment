@@ -239,7 +239,7 @@ const getTranslation = (locale: 'en' | 'ar', key: string): string => {
 };
 
 export default function WarehouseDetailsPage() {
-  const { locale } = useLocale();
+   const { locale, setLocale } = useLocale();
   const router = useRouter();
   const params = useParams();
   const warehouseId = params.id as string;
@@ -338,7 +338,9 @@ export default function WarehouseDetailsPage() {
 
   if (loading) {
     return (
-      <DashboardLayout>
+      <DashboardLayout  role="ADMIN"
+      locale={locale}
+      onLocaleChange={setLocale}>
         <div className="flex items-center justify-center min-h-[60vh]">
           <div className="text-center">
             <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-4" />
