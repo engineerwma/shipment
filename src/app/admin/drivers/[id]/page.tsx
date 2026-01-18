@@ -5,7 +5,6 @@ import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft,
   Edit,
-  Truck,
   Mail,
   Phone,
   Car,
@@ -17,12 +16,9 @@ import {
   Star,
   TrendingUp,
   Clock,
-  CheckCircle,
-  XCircle,
   Loader2,
   AlertCircle,
 } from 'lucide-react';
-import DashboardLayout from '@/components/Layout/DashboardLayout';
 import { useLocale } from '@/app/contexts/LocaleContext';
 
 // Types
