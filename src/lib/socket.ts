@@ -1,55 +1,58 @@
+// lib/socket.ts
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+// Import as default to avoid type conflicts
+import socketIO from 'socket.io-client';
 
-export function useSocket() {
-  const socketRef = useRef<any>(null);
+// Create type alias for Socket
+type Socket = ReturnType<typeof socketIO>;
 
-  const connect = useCallback((token: string) => {
+class SocketService {
+  private socket: Socket | null = null;
+  private static instance: SocketService;
+
+  constructor() {
     if (typeof window === 'undefined') return;
 
-    // Dynamic import to avoid SSR issues
-    import('socket.io-client').then((socketIO) => {
-      const io = socketIO.default || socketIO;
-      
-      socketRef.current = io(process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3001', {
-        auth: { token },
-        transports: ['websocket', 'polling'],
-      });
-
-      socketRef.current.on('connect', () => {
-        console.log('Socket connected');
-      });
+    const token = localStorage.getItem('token');
+    this.socket = socketIO(process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3001', {
+      auth: { token },
+      transports: ['websocket', 'polling'],
     });
-  }, []);
 
-  const disconnect = useCallback(() => {
-    socketRef.current?.disconnect();
-  }, []);
+    this.socket.on('connect', () => {
+      console.log('Socket connected');
+    });
+  }
 
-  const emit = useCallback((event: string, data: any) => {
-    socketRef.current?.emit(event, data);
-  }, []);
+  static getInstance(): SocketService {
+    if (!SocketService.instance) {
+      SocketService.instance = new SocketService();
+    }
+    return SocketService.instance;
+  }
 
-  const on = useCallback((event: string, callback: (data: any) => void) => {
-    socketRef.current?.on(event, callback);
-    // Return cleanup function
+  getSocket() {
+    return this.socket;
+  }
+
+  onDriverLocationUpdate(callback: (data: any) => void) {
+    this.socket?.on('driver:location', callback);
     return () => {
-      socketRef.current?.off(event, callback);
+      this.socket?.off('driver:location', callback);
     };
-  }, []);
+  }
 
-  useEffect(() => {
+  onShipmentUpdate(callback: (data: any) => void) {
+    this.socket?.on('shipment:update', callback);
     return () => {
-      disconnect();
+      this.socket?.off('shipment:update', callback);
     };
-  }, [disconnect]);
+  }
 
-  return {
-    connect,
-    disconnect,
-    emit,
-    on,
-    socket: socketRef.current,
-  };
+  disconnect() {
+    this.socket?.disconnect();
+  }
 }
+
+export const socketService = SocketService.getInstance();
