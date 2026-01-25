@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import {
   Search,
@@ -17,12 +17,18 @@ import {
   Clock,
   XCircle,
   RefreshCw,
+  Upload,
+  X,
+  AlertCircle,
+  Check,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { useLocale } from '../../../app/contexts/LocaleContext';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import { useDropzone } from 'react-dropzone';
 
-// Simple translation function (keep your existing one)
+// Simple translation function
 const getTranslation = (locale: 'en' | 'ar', key: string): string => {
   const translations = {
     en: {
@@ -64,6 +70,17 @@ const getTranslation = (locale: 'en' | 'ar', key: string): string => {
         no: 'No',
         success: 'Success',
         error: 'Error',
+        downloadTemplate: 'Download Template',
+        bulkUpload: 'Bulk Upload',
+        uploadCompleted: 'Upload completed',
+        totalRows: 'Total rows',
+        successful: 'Successful',
+        failed: 'Failed',
+        errors: 'Errors',
+        row: 'Row',
+        close: 'Close',
+        selectFile: 'Select File',
+        uploadingShipments: 'Uploading shipments...',
       },
       shipments: {
         title: 'Shipments Management',
@@ -85,6 +102,13 @@ const getTranslation = (locale: 'en' | 'ar', key: string): string => {
         today: 'Today',
         thisWeek: 'This Week',
         thisMonth: 'This Month',
+        bulkUploadSuccess: 'Bulk upload completed successfully',
+        bulkUploadError: 'Failed to upload shipments',
+        templateDownloadSuccess: 'Template downloaded successfully',
+        templateDownloadError: 'Failed to download template',
+        dragDropExcel: 'Drag & drop an Excel file here, or click to select',
+        supportsExcel: 'Supports .xlsx, .xls files (max 5MB)',
+        uploadCompleted: 'Upload completed',
       },
     },
     ar: {
@@ -126,6 +150,17 @@ const getTranslation = (locale: 'en' | 'ar', key: string): string => {
         no: 'لا',
         success: 'نجاح',
         error: 'خطأ',
+        downloadTemplate: 'تحميل القالب',
+        bulkUpload: 'رفع جماعي',
+        uploadCompleted: 'اكتمل الرفع',
+        totalRows: 'إجمالي الصفوف',
+        successful: 'ناجح',
+        failed: 'فاشل',
+        errors: 'الأخطاء',
+        row: 'صف',
+        close: 'إغلاق',
+        selectFile: 'اختر ملف',
+        uploadingShipments: 'جاري رفع الشحنات...',
       },
       shipments: {
         title: 'إدارة الشحنات',
@@ -147,6 +182,13 @@ const getTranslation = (locale: 'en' | 'ar', key: string): string => {
         today: 'اليوم',
         thisWeek: 'هذا الأسبوع',
         thisMonth: 'هذا الشهر',
+        bulkUploadSuccess: 'تم الرفع الجماعي بنجاح',
+        bulkUploadError: 'فشل رفع الشحنات',
+        templateDownloadSuccess: 'تم تحميل القالب بنجاح',
+        templateDownloadError: 'فشل تحميل القالب',
+        dragDropExcel: 'اسحب وأفلت ملف إكسل هنا، أو انقر للاختيار',
+        supportsExcel: 'يدعم ملفات .xlsx, .xls (بحد أقصى 5 ميجابايت)',
+        uploadCompleted: 'اكتمل الرفع',
       },
     },
   };
@@ -203,6 +245,21 @@ interface Pagination {
   pages: number;
 }
 
+interface UploadResult {
+  total: number;
+  successful: number;
+  failed: number;
+  errors: Array<{ row: number; error: string }>;
+  createdIds: string[];
+}
+
+interface UploadProgress {
+  isUploading: boolean;
+  progress: number;
+  result?: UploadResult;
+  showModal: boolean;
+}
+
 export default function AdminShipmentsPage() {
   const { locale } = useLocale();
   const [shipments, setShipments] = useState<Shipment[]>([]);
@@ -214,6 +271,11 @@ export default function AdminShipmentsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress>({
+    isUploading: false,
+    progress: 0,
+    showModal: false,
+  });
   const itemsPerPage = 10;
 
   const isRTL = locale === 'ar';
@@ -364,6 +426,138 @@ export default function AdminShipmentsPage() {
     document.body.removeChild(link);
   };
 
+  // Bulk Upload Functions
+  const downloadTemplate = async () => {
+    try {
+      const response = await fetch('/api/shipments/template');
+      
+      if (!response.ok) {
+        throw new Error('Failed to download template');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'shipment_template.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      toast.success(getTranslation(locale, 'shipments.templateDownloadSuccess'));
+    } catch (error) {
+      console.error('Template download error:', error);
+      toast.error(getTranslation(locale, 'shipments.templateDownloadError'));
+    }
+  };
+
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+  const file = acceptedFiles[0];
+  if (!file) return;
+
+  // Validate file type
+  if (!file.name.match(/\.(xlsx|xls)$/i)) {
+    toast.error(locale === 'en' 
+      ? 'Please upload Excel files only (.xlsx, .xls)' 
+      : 'يرجى رفع ملفات إكسل فقط (.xlsx, .xls)');
+    return;
+  }
+
+  // Validate file size (max 5MB)
+  if (file.size > 5 * 1024 * 1024) {
+    toast.error(locale === 'en' 
+      ? 'File size should be less than 5MB' 
+      : 'يجب أن يكون حجم الملف أقل من 5 ميجابايت');
+    return;
+  }
+
+  setUploadProgress({
+    isUploading: true,
+    progress: 0,
+    showModal: true,
+    result: undefined,
+  });
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    // Simulate progress
+    const progressInterval = setInterval(() => {
+      setUploadProgress(prev => ({
+        ...prev,
+        progress: Math.min(prev.progress + 10, 90),
+      }));
+    }, 300);
+
+    // IMPORTANT: Include credentials to send cookies
+    const response = await fetch('/api/shipments/bulk', {
+      method: 'POST',
+      body: formData,
+      credentials: 'include', // This sends cookies with the request
+    });
+
+    clearInterval(progressInterval);
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || getTranslation(locale, 'shipments.bulkUploadError'));
+    }
+
+    setUploadProgress({
+      isUploading: false,
+      progress: 100,
+      showModal: true,
+      result,
+    });
+
+    // Refresh shipments list
+    fetchShipments(currentPage);
+
+    toast.success(
+      `${getTranslation(locale, 'shipments.bulkUploadSuccess')}: ${result.successful} ${getTranslation(locale, 'common.successful')}, ${result.failed} ${getTranslation(locale, 'common.failed')}`
+    );
+
+  } catch (error: any) {
+    console.error('Upload error:', error);
+    setUploadProgress(prev => ({
+      ...prev,
+      isUploading: false,
+    }));
+    
+    // Show more detailed error message
+    let errorMessage = error.message;
+    if (error.message.includes('Unauthorized')) {
+      errorMessage = locale === 'en' 
+        ? 'Please login again to upload files' 
+        : 'يرجى تسجيل الدخول مرة أخرى لرفع الملفات';
+    }
+    
+    toast.error(errorMessage || getTranslation(locale, 'shipments.bulkUploadError'));
+  }
+}, [locale, currentPage, fetchShipments]);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+      'application/vnd.ms-excel': ['.xls'],
+    },
+    multiple: false,
+    disabled: uploadProgress.isUploading,
+  });
+
+  const closeUploadModal = () => {
+    setUploadProgress({
+      isUploading: false,
+      progress: 0,
+      showModal: false,
+      result: undefined,
+    });
+  };
+
   // Status options
   const statusOptions = [
     { value: 'ALL', label: getTranslation(locale, 'common.allStatus') },
@@ -436,6 +630,134 @@ export default function AdminShipmentsPage() {
     }
   };
 
+  // Upload Modal Component
+  const UploadModal = () => (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold">
+              {getTranslation(locale, 'common.bulkUpload')}
+            </h3>
+            <button
+              onClick={closeUploadModal}
+              className="text-gray-400 hover:text-gray-600"
+              disabled={uploadProgress.isUploading}
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {uploadProgress.isUploading ? (
+            <div className="space-y-4">
+              <div className="text-center">
+                <Upload className="w-12 h-12 text-blue-500 mx-auto mb-4 animate-pulse" />
+                <p className="text-gray-600 mb-2">
+                  {getTranslation(locale, 'common.uploadingShipments')}
+                </p>
+                <div className="w-full bg-gray-200 rounded-full h-2.5">
+                  <div 
+                    className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                    style={{ width: `${uploadProgress.progress}%` }}
+                  ></div>
+                </div>
+                <p className="text-sm text-gray-500 mt-2">
+                  {uploadProgress.progress}%
+                </p>
+              </div>
+            </div>
+          ) : uploadProgress.result ? (
+            <div className="space-y-4">
+              <div className={`p-4 rounded-lg ${uploadProgress.result.failed === 0 ? 'bg-green-50' : 'bg-yellow-50'}`}>
+                <div className="flex items-start">
+                  {uploadProgress.result.failed === 0 ? (
+                    <Check className="w-5 h-5 text-green-500 mt-0.5 mr-3" />
+                  ) : (
+                    <AlertCircle className="w-5 h-5 text-yellow-500 mt-0.5 mr-3" />
+                  )}
+                  <div>
+                    <p className="font-medium">
+                      {getTranslation(locale, 'common.uploadCompleted')}
+                    </p>
+                    <div className="mt-2 space-y-1 text-sm">
+                      <p>
+                        {getTranslation(locale, 'common.totalRows')}: {uploadProgress.result.total}
+                      </p>
+                      <p className="text-green-600">
+                        {getTranslation(locale, 'common.successful')}: {uploadProgress.result.successful}
+                      </p>
+                      <p className="text-red-600">
+                        {getTranslation(locale, 'common.failed')}: {uploadProgress.result.failed}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {uploadProgress.result.errors.length > 0 && (
+                <div>
+                  <h4 className="font-medium text-gray-900 mb-2">
+                    {getTranslation(locale, 'common.errors')}:
+                  </h4>
+                  <div className="max-h-48 overflow-y-auto border rounded">
+                    {uploadProgress.result.errors.map((error, index) => (
+                      <div 
+                        key={index} 
+                        className="p-3 border-b last:border-b-0 hover:bg-gray-50"
+                      >
+                        <p className="text-sm font-medium text-gray-900">
+                          {getTranslation(locale, 'common.row')} {error.row}
+                        </p>
+                        <p className="text-sm text-red-600 mt-1">
+                          {error.error}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={closeUploadModal}
+                  className="btn btn-secondary flex-1"
+                >
+                  {getTranslation(locale, 'common.close')}
+                </button>
+                {uploadProgress.result.failed > 0 && (
+                  <button
+                    onClick={downloadTemplate}
+                    className="btn btn-primary flex-1"
+                  >
+                    {getTranslation(locale, 'common.downloadTemplate')}
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="text-center p-8">
+              <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
+                <Upload className="w-8 h-8 text-blue-600" />
+              </div>
+              <p className="text-gray-600 mb-4">
+                {getTranslation(locale, 'shipments.dragDropExcel')}
+              </p>
+              <p className="text-sm text-gray-500 mb-6">
+                {getTranslation(locale, 'shipments.supportsExcel')}
+              </p>
+              <div {...getRootProps()}>
+                <input {...getInputProps()} />
+                <button className="btn btn-primary w-full">
+                  {getTranslation(locale, 'common.selectFile')}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <>
       <ToastContainer
@@ -450,6 +772,8 @@ export default function AdminShipmentsPage() {
         pauseOnHover
       />
 
+      {uploadProgress.showModal && <UploadModal />}
+
       <div className="space-y-6">
         {/* Header with actions */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -463,20 +787,43 @@ export default function AdminShipmentsPage() {
           </div>
           <div className="flex items-center gap-3">
             <button
+              onClick={downloadTemplate}
+              className="btn btn-secondary flex items-center gap-2"
+              disabled={uploadProgress.isUploading}
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              <span>{getTranslation(locale, 'common.downloadTemplate')}</span>
+            </button>
+
+            <div {...getRootProps()}>
+              <input {...getInputProps()} />
+              <button
+                className="btn btn-secondary flex items-center gap-2"
+                disabled={uploadProgress.isUploading}
+              >
+                <Upload className="w-4 h-4" />
+                <span>{getTranslation(locale, 'common.bulkUpload')}</span>
+              </button>
+            </div>
+
+            <button
               onClick={() => fetchShipments(currentPage)}
               className="btn btn-secondary flex items-center gap-2"
-              disabled={loading}
+              disabled={loading || uploadProgress.isUploading}
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
               <span>{getTranslation(locale, 'common.refresh')}</span>
             </button>
+            
             <button
               onClick={handleExport}
               className="btn btn-secondary flex items-center gap-2"
+              disabled={uploadProgress.isUploading}
             >
               <Download className="w-4 h-4" />
               <span>{getTranslation(locale, 'shipments.export')}</span>
             </button>
+            
             <Link
               href="/admin/shipments/new"
               className="btn btn-primary flex items-center gap-2"
@@ -616,13 +963,22 @@ export default function AdminShipmentsPage() {
                   ? 'Try changing your filters'
                   : 'Create your first shipment to get started'}
               </p>
-              <Link
-                href="/admin/shipments/new"
-                className="btn btn-primary inline-flex items-center gap-2"
-              >
-                <Plus className="w-4 h-4" />
-                {getTranslation(locale, 'shipments.newShipment')}
-              </Link>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <div {...getRootProps()}>
+                  <input {...getInputProps()} />
+                  <button className="btn btn-secondary inline-flex items-center gap-2 mb-2 sm:mb-0">
+                    <Upload className="w-4 h-4" />
+                    {getTranslation(locale, 'common.bulkUpload')}
+                  </button>
+                </div>
+                <Link
+                  href="/admin/shipments/new"
+                  className="btn btn-primary inline-flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  {getTranslation(locale, 'shipments.newShipment')}
+                </Link>
+              </div>
             </div>
           ) : (
             <>
@@ -726,12 +1082,12 @@ export default function AdminShipmentsPage() {
                                 <Eye className="w-4 h-4" />
                               </Link>
                               <Link
-                                    href={`/admin/shipments/${shipment.id}/edit`}
-                                    className="p-1 text-green-600 hover:text-green-800 hover:bg-green-50 rounded"
-                                    title={getTranslation(locale, 'common.edit')}
-                                  >
-                                    <Edit className="w-4 h-4" />
-                                  </Link>
+                                href={`/admin/shipments/${shipment.id}/edit`}
+                                className="p-1 text-green-600 hover:text-green-800 hover:bg-green-50 rounded"
+                                title={getTranslation(locale, 'common.edit')}
+                              >
+                                <Edit className="w-4 h-4" />
+                              </Link>
                               <button
                                 onClick={() => handleDelete(shipment.id)}
                                 className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded disabled:opacity-50 disabled:cursor-not-allowed"
