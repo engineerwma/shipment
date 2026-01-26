@@ -262,6 +262,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// IMPORTANT: This should be at the end of the file, not inside a function
 export const config = {
   api: {
     bodyParser: false, // Important for file uploads
