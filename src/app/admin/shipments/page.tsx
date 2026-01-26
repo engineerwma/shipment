@@ -452,25 +452,14 @@ export default function AdminShipmentsPage() {
     }
   };
 
-  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+ const onDrop = useCallback(async (acceptedFiles: File[]) => {
   const file = acceptedFiles[0];
   if (!file) return;
 
-  // Validate file type
-  if (!file.name.match(/\.(xlsx|xls)$/i)) {
-    toast.error(locale === 'en' 
-      ? 'Please upload Excel files only (.xlsx, .xls)' 
-      : 'يرجى رفع ملفات إكسل فقط (.xlsx, .xls)');
-    return;
-  }
+  // ... validation code ...
 
-  // Validate file size (max 5MB)
-  if (file.size > 5 * 1024 * 1024) {
-    toast.error(locale === 'en' 
-      ? 'File size should be less than 5MB' 
-      : 'يجب أن يكون حجم الملف أقل من 5 ميجابايت');
-    return;
-  }
+  // Create a ref to track the interval
+  const progressInterval = { current: null as NodeJS.Timeout | null };
 
   setUploadProgress({
     isUploading: true,
@@ -479,33 +468,77 @@ export default function AdminShipmentsPage() {
     result: undefined,
   });
 
-  const formData = new FormData();
-  formData.append('file', file);
-
   try {
-    // Simulate progress
-    const progressInterval = setInterval(() => {
+    // Start progress simulation
+    progressInterval.current = setInterval(() => {
       setUploadProgress(prev => ({
         ...prev,
-        progress: Math.min(prev.progress + 10, 90),
+        progress: Math.min(prev.progress + 5, 90), // Slower increment
       }));
-    }, 300);
+    }, 500); // Slower interval
 
-    // IMPORTANT: Include credentials to send cookies
+    const formData = new FormData();
+    formData.append('file', file);
+
+    // IMPORTANT: Add timeout for Vercel
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
     const response = await fetch('/api/shipments/bulk', {
       method: 'POST',
       body: formData,
-      credentials: 'include', // This sends cookies with the request
+      credentials: 'include',
+      signal: controller.signal,
+      headers: {
+        // Add cache control headers for Vercel
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+      },
     });
 
-    clearInterval(progressInterval);
+    clearTimeout(timeoutId);
+
+    // Clear progress interval BEFORE processing response
+    if (progressInterval.current) {
+      clearInterval(progressInterval.current);
+      progressInterval.current = null;
+    }
+
+    // Check for non-JSON responses first
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const text = await response.text();
+      console.error('Non-JSON response from Vercel:', {
+        status: response.status,
+        statusText: response.statusText,
+        contentType,
+        bodyPreview: text.substring(0, 200),
+      });
+      
+      // Set final state
+      setUploadProgress(prev => ({
+        ...prev,
+        isUploading: false,
+        progress: 100,
+      }));
+      
+      throw new Error(
+        locale === 'en' 
+          ? `Server error (${response.status}): ${response.statusText}` 
+          : `خطأ في الخادم (${response.status}): ${response.statusText}`
+      );
+    }
 
     const result = await response.json();
 
     if (!response.ok) {
+      setUploadProgress(prev => ({
+        ...prev,
+        isUploading: false,
+      }));
       throw new Error(result.error || getTranslation(locale, 'shipments.bulkUploadError'));
     }
 
+    // Success - set 100% progress
     setUploadProgress({
       isUploading: false,
       progress: 100,
@@ -522,6 +555,14 @@ export default function AdminShipmentsPage() {
 
   } catch (error: any) {
     console.error('Upload error:', error);
+    
+    // ALWAYS clear interval on error
+    if (progressInterval.current) {
+      clearInterval(progressInterval.current);
+      progressInterval.current = null;
+    }
+    
+    // Set error state
     setUploadProgress(prev => ({
       ...prev,
       isUploading: false,
@@ -529,10 +570,18 @@ export default function AdminShipmentsPage() {
     
     // Show more detailed error message
     let errorMessage = error.message;
-    if (error.message.includes('Unauthorized')) {
+    if (error.name === 'AbortError') {
       errorMessage = locale === 'en' 
-        ? 'Please login again to upload files' 
-        : 'يرجى تسجيل الدخول مرة أخرى لرفع الملفات';
+        ? 'Upload timed out (30s). Try with a smaller file.' 
+        : 'انتهت مهلة الرفع (30 ثانية). حاول بملف أصغر.';
+    } else if (error.message.includes('Failed to fetch')) {
+      errorMessage = locale === 'en' 
+        ? 'Network error. Check your connection and try again.' 
+        : 'خطأ في الشبكة. تحقق من اتصالك وحاول مرة أخرى.';
+    } else if (error.message.includes('Unauthorized')) {
+      errorMessage = locale === 'en' 
+        ? 'Session expired. Please login again.' 
+        : 'انتهت الجلسة. يرجى تسجيل الدخول مرة أخرى.';
     }
     
     toast.error(errorMessage || getTranslation(locale, 'shipments.bulkUploadError'));
