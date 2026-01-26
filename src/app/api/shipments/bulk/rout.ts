@@ -1,7 +1,11 @@
+// app/api/shipments/bulk/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
 import * as XLSX from 'xlsx';
 import { verifyToken } from '../../../../lib/auth-utils';
+
+export const dynamic = 'force-dynamic'; // Important for Vercel
+export const maxDuration = 60; // Max 60 seconds for Vercel Pro, 10s for Hobby
 
 interface ExcelShipmentRow {
   'Customer Name': string;
@@ -19,100 +23,188 @@ interface ExcelShipmentRow {
 }
 
 export async function POST(request: NextRequest) {
+  console.log('Bulk upload API called on Vercel');
+  
   try {
-    // Get token from cookies (same as your middleware)
+    // Get token from cookies
     const token = request.cookies.get('token')?.value;
     
     if (!token) {
+      console.log('No token found');
       return NextResponse.json(
         { error: 'Unauthorized - No token found' },
-        { status: 401 }
+        { 
+          status: 401,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          }
+        }
       );
     }
 
-    // Verify token using your existing auth-utils
+    // Verify token
     const decoded = verifyToken(token);
     if (!decoded) {
+      console.log('Invalid token');
       return NextResponse.json(
         { error: 'Unauthorized - Invalid token' },
-        { status: 401 }
+        { 
+          status: 401,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          }
+        }
       );
     }
 
-    // Check if user has permission (ADMIN or MERCHANT)
+    // Check permissions
     const userRole = decoded.role;
     if (!['ADMIN', 'MERCHANT'].includes(userRole)) {
+      console.log('Insufficient permissions for user role:', userRole);
       return NextResponse.json(
         { error: 'Forbidden - Insufficient permissions' },
-        { status: 403 }
+        { 
+          status: 403,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          }
+        }
       );
     }
 
-    // Get user from database
+    // Get user
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
     });
 
     if (!user) {
+      console.log('User not found in database');
       return NextResponse.json(
         { error: 'User not found' },
-        { status: 404 }
+        { 
+          status: 404,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          }
+        }
       );
     }
 
-    // Check if form data is present
+    console.log('User authenticated:', user.email);
+
+    // Check content type
     const contentType = request.headers.get('content-type') || '';
     if (!contentType.includes('multipart/form-data')) {
+      console.log('Invalid content type:', contentType);
       return NextResponse.json(
         { error: 'Content-Type must be multipart/form-data' },
-        { status: 400 }
+        { 
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          }
+        }
       );
     }
 
+    // Get form data
     const formData = await request.formData();
     const file = formData.get('file') as File;
 
     if (!file) {
+      console.log('No file in form data');
       return NextResponse.json(
         { error: 'No file uploaded' },
-        { status: 400 }
+        { 
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          }
+        }
       );
     }
+
+    console.log('File received:', {
+      name: file.name,
+      size: file.size,
+      type: file.type,
+    });
 
     // Validate file type
     if (!file.name.match(/\.(xlsx|xls)$/i)) {
+      console.log('Invalid file type:', file.name);
       return NextResponse.json(
         { error: 'Only Excel files are allowed (.xlsx, .xls)' },
-        { status: 400 }
+        { 
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          }
+        }
       );
     }
 
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
+    // Validate file size - Vercel has 4.5MB limit for Serverless Functions
+    if (file.size > 4 * 1024 * 1024) { // 4MB for safety
+      console.log('File too large:', file.size);
       return NextResponse.json(
-        { error: 'File size must be less than 5MB' },
-        { status: 400 }
+        { error: 'File size must be less than 4MB on Vercel' },
+        { 
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          }
+        }
       );
     }
 
     // Read Excel file
+    console.log('Reading Excel file...');
     const buffer = await file.arrayBuffer();
     const workbook = XLSX.read(buffer, { type: 'buffer' });
     const worksheet = workbook.Sheets[workbook.SheetNames[0]];
     const data = XLSX.utils.sheet_to_json<ExcelShipmentRow>(worksheet);
 
+    console.log('Excel rows parsed:', data.length);
+
     if (!data.length) {
       return NextResponse.json(
         { error: 'Excel file is empty' },
-        { status: 400 }
+        { 
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          }
+        }
       );
     }
 
-    // Limit number of rows to prevent abuse
-    if (data.length > 1000) {
+    // Limit rows for Vercel timeout constraints
+    const MAX_ROWS = userRole === 'ADMIN' ? 100 : 50; // Smaller limits for Vercel
+    if (data.length > MAX_ROWS) {
+      console.log(`Too many rows: ${data.length}, limiting to ${MAX_ROWS}`);
       return NextResponse.json(
-        { error: 'Maximum 1000 rows allowed per upload' },
-        { status: 400 }
+        { 
+          error: `Maximum ${MAX_ROWS} rows allowed per upload on Vercel. Your file has ${data.length} rows.`,
+          maxRows: MAX_ROWS,
+          yourRows: data.length
+        },
+        { 
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          }
+        }
       );
     }
 
@@ -124,10 +216,12 @@ export async function POST(request: NextRequest) {
       createdIds: [] as string[],
     };
 
-    // Process each row
+    console.log('Processing rows...');
+    
+    // Process each row with error handling
     for (let i = 0; i < data.length; i++) {
       const row = data[i];
-      const rowNumber = i + 2; // +2 because Excel rows start at 1 and header is row 1
+      const rowNumber = i + 2;
 
       try {
         // Validate required fields
@@ -148,7 +242,7 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Validate phone number (Egyptian format)
+        // Validate phone number
         const phone = row['Customer Phone'].toString().trim();
         const phoneRegex = /^(\+20|0)?1[0125][0-9]{8}$/;
         if (!phoneRegex.test(phone)) {
@@ -177,7 +271,7 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Get merchant (for merchants uploading, use their own account)
+        // Get merchant
         let merchantId = user.id;
         let merchant = user;
 
@@ -206,6 +300,8 @@ export async function POST(request: NextRequest) {
         const random = Math.random().toString(36).substr(2, 9).toUpperCase();
         const trackingNumber = `TRK${timestamp}${random}`;
         const barcode = `BRC${timestamp}${random}`;
+
+        console.log(`Creating shipment ${i + 1}/${data.length}...`);
 
         // Create shipment
         const shipment = await prisma.shipment.create({
@@ -236,7 +332,9 @@ export async function POST(request: NextRequest) {
 
         results.successful++;
         results.createdIds.push(shipment.id);
+
       } catch (error: any) {
+        console.error(`Error in row ${rowNumber}:`, error.message);
         results.failed++;
         results.errors.push({
           row: rowNumber,
@@ -245,26 +343,121 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    console.log('Bulk upload completed:', results);
+
+    // Return success response
     return NextResponse.json({
       message: 'Bulk upload completed',
       ...results,
-    }, { status: 200 });
+    }, {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Content-Type': 'application/json',
+      },
+    });
 
   } catch (error: any) {
-    console.error('Bulk upload error:', error);
+    console.error('Bulk upload API error:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+    });
+    
     return NextResponse.json(
       { 
         error: error.message || 'Internal server error',
         details: process.env.NODE_ENV === 'development' ? error.stack : undefined
       },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Content-Type': 'application/json',
+        },
+      }
     );
   }
 }
 
-// IMPORTANT: This should be at the end of the file, not inside a function
-export const config = {
-  api: {
-    bodyParser: false, // Important for file uploads
-  },
-};
+// Handle OPTIONS for CORS preflight
+export async function OPTIONS() {
+  console.log('CORS preflight request');
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Max-Age': '86400',
+    },
+  });
+}
+
+// Handle other methods
+export async function GET() {
+  return NextResponse.json(
+    { error: 'Method not allowed. Use POST for bulk upload.' },
+    { 
+      status: 405,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      }
+    }
+  );
+}
+
+export async function PUT() {
+  return NextResponse.json(
+    { error: 'Method not allowed' },
+    { 
+      status: 405,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      }
+    }
+  );
+}
+
+export async function DELETE() {
+  return NextResponse.json(
+    { error: 'Method not allowed' },
+    { 
+      status: 405,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      }
+    }
+  );
+}
+
+export async function HEAD() {
+  return NextResponse.json(
+    { error: 'Method not allowed' },
+    { 
+      status: 405,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      }
+    }
+  );
+}
+
+export async function PATCH() {
+  return NextResponse.json(
+    { error: 'Method not allowed' },
+    { 
+      status: 405,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      }
+    }
+  );
+}
