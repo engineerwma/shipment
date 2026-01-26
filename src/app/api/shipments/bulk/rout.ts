@@ -4,8 +4,8 @@ import { prisma } from '../../../../lib/prisma';
 import * as XLSX from 'xlsx';
 import { verifyToken } from '../../../../lib/auth-utils';
 
-export const dynamic = 'force-dynamic'; // Important for Vercel
-export const maxDuration = 60; // Max 60 seconds for Vercel Pro, 10s for Hobby
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 interface ExcelShipmentRow {
   'Customer Name': string;
@@ -23,55 +23,32 @@ interface ExcelShipmentRow {
 }
 
 export async function POST(request: NextRequest) {
-  console.log('Bulk upload API called on Vercel');
-  
   try {
     // Get token from cookies
     const token = request.cookies.get('token')?.value;
     
     if (!token) {
-      console.log('No token found');
       return NextResponse.json(
         { error: 'Unauthorized - No token found' },
-        { 
-          status: 401,
-          headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          }
-        }
+        { status: 401 }
       );
     }
 
     // Verify token
     const decoded = verifyToken(token);
     if (!decoded) {
-      console.log('Invalid token');
       return NextResponse.json(
         { error: 'Unauthorized - Invalid token' },
-        { 
-          status: 401,
-          headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          }
-        }
+        { status: 401 }
       );
     }
 
     // Check permissions
     const userRole = decoded.role;
     if (!['ADMIN', 'MERCHANT'].includes(userRole)) {
-      console.log('Insufficient permissions for user role:', userRole);
       return NextResponse.json(
         { error: 'Forbidden - Insufficient permissions' },
-        { 
-          status: 403,
-          headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          }
-        }
+        { status: 403 }
       );
     }
 
@@ -81,130 +58,60 @@ export async function POST(request: NextRequest) {
     });
 
     if (!user) {
-      console.log('User not found in database');
       return NextResponse.json(
         { error: 'User not found' },
-        { 
-          status: 404,
-          headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          }
-        }
+        { status: 404 }
       );
     }
 
-    console.log('User authenticated:', user.email);
-
-    // Check content type
-    const contentType = request.headers.get('content-type') || '';
-    if (!contentType.includes('multipart/form-data')) {
-      console.log('Invalid content type:', contentType);
-      return NextResponse.json(
-        { error: 'Content-Type must be multipart/form-data' },
-        { 
-          status: 400,
-          headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          }
-        }
-      );
-    }
-
-    // Get form data
+    // Get form data - App Router automatically handles multipart
     const formData = await request.formData();
     const file = formData.get('file') as File;
 
     if (!file) {
-      console.log('No file in form data');
       return NextResponse.json(
         { error: 'No file uploaded' },
-        { 
-          status: 400,
-          headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          }
-        }
+        { status: 400 }
       );
     }
-
-    console.log('File received:', {
-      name: file.name,
-      size: file.size,
-      type: file.type,
-    });
 
     // Validate file type
     if (!file.name.match(/\.(xlsx|xls)$/i)) {
-      console.log('Invalid file type:', file.name);
       return NextResponse.json(
         { error: 'Only Excel files are allowed (.xlsx, .xls)' },
-        { 
-          status: 400,
-          headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          }
-        }
+        { status: 400 }
       );
     }
 
-    // Validate file size - Vercel has 4.5MB limit for Serverless Functions
-    if (file.size > 4 * 1024 * 1024) { // 4MB for safety
-      console.log('File too large:', file.size);
+    // Validate file size - Use 4MB for Vercel
+    if (file.size > 4 * 1024 * 1024) {
       return NextResponse.json(
-        { error: 'File size must be less than 4MB on Vercel' },
-        { 
-          status: 400,
-          headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          }
-        }
+        { error: 'File size must be less than 4MB' },
+        { status: 400 }
       );
     }
 
     // Read Excel file
-    console.log('Reading Excel file...');
     const buffer = await file.arrayBuffer();
     const workbook = XLSX.read(buffer, { type: 'buffer' });
     const worksheet = workbook.Sheets[workbook.SheetNames[0]];
     const data = XLSX.utils.sheet_to_json<ExcelShipmentRow>(worksheet);
 
-    console.log('Excel rows parsed:', data.length);
-
     if (!data.length) {
       return NextResponse.json(
         { error: 'Excel file is empty' },
-        { 
-          status: 400,
-          headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          }
-        }
+        { status: 400 }
       );
     }
 
-    // Limit rows for Vercel timeout constraints
-    const MAX_ROWS = userRole === 'ADMIN' ? 100 : 50; // Smaller limits for Vercel
+    // Limit rows for Vercel
+    const MAX_ROWS = 50; // Conservative limit for Vercel
     if (data.length > MAX_ROWS) {
-      console.log(`Too many rows: ${data.length}, limiting to ${MAX_ROWS}`);
       return NextResponse.json(
         { 
-          error: `Maximum ${MAX_ROWS} rows allowed per upload on Vercel. Your file has ${data.length} rows.`,
-          maxRows: MAX_ROWS,
-          yourRows: data.length
+          error: `Maximum ${MAX_ROWS} rows allowed per upload on Vercel. Your file has ${data.length} rows.`
         },
-        { 
-          status: 400,
-          headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          }
-        }
+        { status: 400 }
       );
     }
 
@@ -216,9 +123,7 @@ export async function POST(request: NextRequest) {
       createdIds: [] as string[],
     };
 
-    console.log('Processing rows...');
-    
-    // Process each row with error handling
+    // Process each row
     for (let i = 0; i < data.length; i++) {
       const row = data[i];
       const rowNumber = i + 2;
@@ -259,21 +164,8 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Validate optional numeric fields
-        const optionalNumericFields = ['Weight (kg)', 'COD Amount (EGP)'];
-        for (const field of optionalNumericFields) {
-          const value = row[field as keyof ExcelShipmentRow];
-          if (value !== undefined && value !== null && value !== '') {
-            const numValue = Number(value);
-            if (isNaN(numValue) || numValue < 0) {
-              throw new Error(`${field} must be a positive number if provided`);
-            }
-          }
-        }
-
         // Get merchant
         let merchantId = user.id;
-        let merchant = user;
 
         // If admin is uploading and specified a merchant email
         if (userRole === 'ADMIN' && row['Merchant Email']) {
@@ -288,20 +180,17 @@ export async function POST(request: NextRequest) {
             
             if (specifiedMerchant) {
               merchantId = specifiedMerchant.id;
-              merchant = specifiedMerchant;
             } else {
               throw new Error(`Merchant with email "${merchantEmail}" not found`);
             }
           }
         }
 
-        // Generate unique tracking number and barcode
+        // Generate tracking number
         const timestamp = Date.now();
         const random = Math.random().toString(36).substr(2, 9).toUpperCase();
         const trackingNumber = `TRK${timestamp}${random}`;
         const barcode = `BRC${timestamp}${random}`;
-
-        console.log(`Creating shipment ${i + 1}/${data.length}...`);
 
         // Create shipment
         const shipment = await prisma.shipment.create({
@@ -332,9 +221,7 @@ export async function POST(request: NextRequest) {
 
         results.successful++;
         results.createdIds.push(shipment.id);
-
       } catch (error: any) {
-        console.error(`Error in row ${rowNumber}:`, error.message);
         results.failed++;
         results.errors.push({
           row: rowNumber,
@@ -343,121 +230,30 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log('Bulk upload completed:', results);
-
-    // Return success response
     return NextResponse.json({
       message: 'Bulk upload completed',
       ...results,
-    }, {
-      status: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Content-Type': 'application/json',
-      },
-    });
+    }, { status: 200 });
 
   } catch (error: any) {
-    console.error('Bulk upload API error:', {
-      message: error.message,
-      stack: error.stack,
-      name: error.name,
-    });
-    
+    console.error('Bulk upload error:', error);
     return NextResponse.json(
       { 
-        error: error.message || 'Internal server error',
-        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        error: error.message || 'Internal server error'
       },
-      { 
-        status: 500,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          'Content-Type': 'application/json',
-        },
-      }
+      { status: 500 }
     );
   }
 }
 
-// Handle OPTIONS for CORS preflight
+// For CORS - optional but helpful
 export async function OPTIONS() {
-  console.log('CORS preflight request');
   return new NextResponse(null, {
     status: 200,
     headers: {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      'Access-Control-Max-Age': '86400',
+      'Access-Control-Allow-Headers': 'Content-Type',
     },
   });
-}
-
-// Handle other methods
-export async function GET() {
-  return NextResponse.json(
-    { error: 'Method not allowed. Use POST for bulk upload.' },
-    { 
-      status: 405,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      }
-    }
-  );
-}
-
-export async function PUT() {
-  return NextResponse.json(
-    { error: 'Method not allowed' },
-    { 
-      status: 405,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      }
-    }
-  );
-}
-
-export async function DELETE() {
-  return NextResponse.json(
-    { error: 'Method not allowed' },
-    { 
-      status: 405,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      }
-    }
-  );
-}
-
-export async function HEAD() {
-  return NextResponse.json(
-    { error: 'Method not allowed' },
-    { 
-      status: 405,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      }
-    }
-  );
-}
-
-export async function PATCH() {
-  return NextResponse.json(
-    { error: 'Method not allowed' },
-    { 
-      status: 405,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      }
-    }
-  );
 }
